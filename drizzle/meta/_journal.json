@@ -1,1 +1,1 @@
-{"version":"7","dialect":"sqlite","entries":[{"idx":0,"version":"6","when":1789390800000,"tag":"0000_create_appointments","breakpoints":true}]}
+{"version":"7","dialect":"sqlite","entries":[{"idx":0,"version":"6","when":1789390800000,"tag":"0000_create_appointments","breakpoints":true},{"idx":1,"version":"6","when":1789400400000,"tag":"0001_create_site_settings","breakpoints":true}]}
