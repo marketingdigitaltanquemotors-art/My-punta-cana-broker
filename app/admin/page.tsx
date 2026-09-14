@@ -45,7 +45,8 @@ export default function AdminPage() {
     setSaving('video');
     setMessage('');
     setError('');
-    const response = await fetch('/api/site-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ heroVideoUrl }) });
+    const form = new FormData(event.currentTarget);
+    const response = await fetch('/api/site-settings', { method: 'PUT', body: form });
     const data = await response.json();
     setSaving('');
     if (!response.ok) {
@@ -54,7 +55,24 @@ export default function AdminPage() {
     }
     setSavedUrl(data.heroVideoUrl ?? '');
     setHeroVideoUrl(data.heroVideoUrl ?? '');
-    setMessage(data.heroVideoUrl ? 'Video principal actualizado.' : 'Video quitado. La portada usará la imagen principal.');
+    event.currentTarget.reset();
+    setMessage('Video principal subido y actualizado.');
+  }
+
+  async function removeVideo() {
+    setSaving('video');
+    setMessage('');
+    setError('');
+    const response = await fetch('/api/site-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ heroVideoUrl: '' }) });
+    const data = await response.json();
+    setSaving('');
+    if (!response.ok) {
+      setError(data.error ?? 'No pudimos quitar el video.');
+      return;
+    }
+    setSavedUrl('');
+    setHeroVideoUrl('');
+    setMessage('Video quitado. La portada usará la imagen principal.');
   }
 
   async function uploadContent(event: React.FormEvent<HTMLFormElement>, type: ContentType) {
@@ -103,9 +121,10 @@ export default function AdminPage() {
       <div className="admin-grid">
         <form onSubmit={saveVideo} className="admin-card">
           <span className="kicker"><Video /> VIDEO PRINCIPAL</span>
-          <label>URL del video<input value={heroVideoUrl} onChange={event => setHeroVideoUrl(event.target.value)} placeholder="https://tusitio.com/video-solares.mp4" disabled={loading || saving === 'video'} /></label>
-          <p className="admin-help">Pega un enlace directo MP4 o WebM. Si lo dejas vacío, la portada usará la imagen principal.</p>
-          <button className="btn dark admin-save" type="submit" disabled={loading || saving === 'video'}>{saving === 'video' ? <Loader2 /> : <Save />} GUARDAR VIDEO</button>
+          <label>Subir video desde la PC<input name="heroVideo" type="file" accept="video/mp4,video/webm,video/quicktime" disabled={loading || saving === 'video'} required /></label>
+          <p className="admin-help">Acepta MP4, WebM o MOV de hasta 80 MB. Al guardarlo, la portada usará ese video automáticamente.</p>
+          <button className="btn dark admin-save" type="submit" disabled={loading || saving === 'video'}>{saving === 'video' ? <Loader2 /> : <Save />} SUBIR VIDEO</button>
+          <button className="remove-video" type="button" onClick={removeVideo} disabled={loading || saving === 'video' || !heroVideoUrl}>QUITAR VIDEO</button>
           <div className="video-preview compact">{loading ? <Loader2 className="preview-loader" /> : savedUrl ? <video src={savedUrl} controls poster="/hero-solar-v1.png" /> : <img src="/hero-solar-v1.png" alt="Vista previa de la portada" />}</div>
         </form>
         <UploadCard type="solar" title="Subir foto de solar" description="Nombre del solar o ubicación" saving={saving === 'solar'} onSubmit={uploadContent} />
