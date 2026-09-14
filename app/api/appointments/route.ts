@@ -1,6 +1,9 @@
 import { getDatabase } from '@/db';
 
-const times = Array.from({ length: 18 }, (_, index) => { const minutes = 510 + index * 30; return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`; });
+const makeTimes = (start: number, count: number) => Array.from({ length: count }, (_, index) => { const minutes = start + index * 30; return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`; });
+const weekdayTimes = makeTimes(510, 18);
+const saturdayTimes = makeTimes(540, 7);
+const validTimesForDate = (date: string) => { const day = new Date(`${date}T12:00:00Z`).getUTCDay(); return day === 0 ? [] : day === 6 ? saturdayTimes : weekdayTimes; };
 
 function currentPuntaCanaDateTime() {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santo_Domingo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
@@ -21,7 +24,7 @@ export async function POST(request: Request) {
   const body = await request.json() as Record<string, string>;
   const date = body.date?.trim(); const time = body.time?.trim();
   const name = body.name?.trim(); const phone = body.phone?.trim(); const email = body.email?.trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !times.includes(time) || !name || !phone || !email) return Response.json({ error: 'Completa correctamente todos los datos requeridos.' }, { status: 400 });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !validTimesForDate(date).includes(time) || !name || !phone || !email) return Response.json({ error: 'Selecciona una fecha y un horario dentro de nuestra jornada laboral.' }, { status: 400 });
   const current = currentPuntaCanaDateTime();
   if (date < current.date || (date === current.date && time < current.time)) return Response.json({ error: 'Ese horario ya pasó. Elige una hora disponible.' }, { status: 400 });
   const code = `MPCB-${date.replaceAll('-', '')}-${time.replace(':', '')}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`;
