@@ -8,3 +8,8 @@ export const siteSettingsSchema = {
   table: 'site_settings',
   columns: ['key', 'value', 'updated_at'],
 } as const;
+
+export const contentItemsSchema = {
+  table: 'content_items',
+  columns: ['id', 'type', 'title', 'description', 'image_key', 'image_url', 'created_at'],
+} as const;
