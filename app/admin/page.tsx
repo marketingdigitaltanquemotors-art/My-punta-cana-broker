@@ -1,9 +1,10 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { ArrowLeft, CheckCircle2, ImagePlus, Loader2, Save, Trash2, Upload, Video } from 'lucide-react';
+import { ArrowLeft, CalendarCheck, CheckCircle2, ImagePlus, Loader2, Save, Trash2, Upload, Video } from 'lucide-react';
 
 type ContentType = 'solar' | 'testimonial';
 type ContentItem = { id: number; type: ContentType; title: string; description?: string; image_url: string };
+type Appointment = { id: number; appointment_date: string; appointment_time: string; client_name: string; phone: string; email: string; reservation_code: string; created_at: number };
 
 function Brand() { return <span className="brand"><span className="logo-mark">M</span><span><b>MY PUNTA CANA</b><small>BROKER</small></span></span>; }
 const labels = { solar: 'Foto de solar', testimonial: 'Testimonio' };
@@ -12,6 +13,7 @@ export default function AdminPage() {
   const [heroVideoUrl, setHeroVideoUrl] = useState('');
   const [savedUrl, setSavedUrl] = useState('');
   const [items, setItems] = useState<ContentItem[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState('');
   const [message, setMessage] = useState('');
@@ -21,12 +23,14 @@ export default function AdminPage() {
     setLoading(true);
     setError('');
     try {
-      const [settingsResponse, contentResponse] = await Promise.all([fetch('/api/site-settings', { cache: 'no-store' }), fetch('/api/content', { cache: 'no-store' })]);
+      const [settingsResponse, contentResponse, appointmentsResponse] = await Promise.all([fetch('/api/site-settings', { cache: 'no-store' }), fetch('/api/content', { cache: 'no-store' }), fetch('/api/admin/appointments', { cache: 'no-store' })]);
       const settings = await settingsResponse.json();
       const content = await contentResponse.json();
+      const appointmentsData = await appointmentsResponse.json();
       setHeroVideoUrl(settings.heroVideoUrl ?? '');
       setSavedUrl(settings.heroVideoUrl ?? '');
       setItems(content.items ?? []);
+      setAppointments(appointmentsData.appointments ?? []);
     } catch {
       setError('No pudimos cargar el panel.');
     } finally {
@@ -109,6 +113,7 @@ export default function AdminPage() {
       </div>
       <ContentList title="Fotos de solares publicadas" items={solarItems} deleting={saving} onDelete={deleteContent} />
       <ContentList title="Testimonios publicados" items={testimonialItems} deleting={saving} onDelete={deleteContent} />
+      <AppointmentsList appointments={appointments} />
     </section>
   </main>;
 }
@@ -126,4 +131,8 @@ function UploadCard({ type, title, description, saving, onSubmit }: { type: Cont
 
 function ContentList({ title, items, deleting, onDelete }: { title: string; items: ContentItem[]; deleting: string; onDelete: (id: number) => void }) {
   return <section className="admin-list"><h2>{title}</h2>{items.length ? <div className="admin-items">{items.map(item => <article key={item.id} className="admin-item"><img src={item.image_url} alt={item.title} /><div><b>{item.title}</b>{item.description && <p>{item.description}</p>}</div><button type="button" onClick={() => onDelete(item.id)} disabled={deleting === `delete-${item.id}`} aria-label={`Eliminar ${item.title}`}>{deleting === `delete-${item.id}` ? <Loader2 /> : <Trash2 />}</button></article>)}</div> : <p className="admin-help">Todavía no hay contenido en esta sección.</p>}</section>;
+}
+
+function AppointmentsList({ appointments }: { appointments: Appointment[] }) {
+  return <section className="admin-list appointments-list"><span className="kicker"><CalendarCheck /> CITAS</span><h2>Citas agendadas</h2>{appointments.length ? <div className="appointments-table"><table><thead><tr><th>Cliente</th><th>WhatsApp</th><th>Correo</th><th>Fecha</th><th>Hora</th><th>Código</th></tr></thead><tbody>{appointments.map(appointment => <tr key={appointment.id}><td>{appointment.client_name}</td><td><a href={`https://wa.me/${appointment.phone.replace(/\D/g, '')}`}>{appointment.phone}</a></td><td><a href={`mailto:${appointment.email}`}>{appointment.email}</a></td><td>{appointment.appointment_date}</td><td>{appointment.appointment_time}</td><td><b>{appointment.reservation_code}</b></td></tr>)}</tbody></table></div> : <p className="admin-help">Todavía no hay citas agendadas.</p>}</section>;
 }
