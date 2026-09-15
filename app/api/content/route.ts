@@ -1,4 +1,5 @@
 import { getDatabase, getMediaBucket } from '@/db';
+import { requireAdmin } from '@/lib/admin-auth';
 
 type ContentType = 'solar' | 'testimonial';
 const allowedTypes = new Set<ContentType>(['solar', 'testimonial']);
@@ -43,6 +44,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const unauthorized = requireAdmin(request);
+  if (unauthorized) return unauthorized;
   const form = await request.formData();
   const type = cleanText(form.get('type')) as ContentType;
   const title = cleanText(form.get('title'));
@@ -71,6 +74,8 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const unauthorized = requireAdmin(request);
+  if (unauthorized) return unauthorized;
   const id = Number(new URL(request.url).searchParams.get('id'));
   if (!Number.isInteger(id) || id < 1) return Response.json({ error: 'Contenido inválido.' }, { status: 400 });
   try {

@@ -1,4 +1,5 @@
 import { getDatabase, getMediaBucket } from '@/db';
+import { requireAdmin } from '@/lib/admin-auth';
 
 const VIDEO_URL_KEY = 'hero_video_url';
 const TESTIMONIALS_ENABLED_KEY = 'testimonials_enabled';
@@ -77,6 +78,8 @@ export async function GET(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const unauthorized = requireAdmin(request);
+  if (unauthorized) return unauthorized;
   let heroVideoUrl = '';
   let uploadedKey = '';
   const profileId = await activeProfileId();

@@ -1,5 +1,6 @@
 import { getDatabase } from '@/db';
 import { getMediaBucket } from '@/db';
+import { requireAdmin } from '@/lib/admin-auth';
 
 const ACTIVE_PROFILE_KEY = 'active_project_profile_id';
 
@@ -22,7 +23,9 @@ async function ensureDefaultProfile() {
   return profile ?? { id: 1, name: 'Perfil principal', created_at: now };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const unauthorized = requireAdmin(request);
+  if (unauthorized) return unauthorized;
   try {
     await ensureDefaultProfile();
     const result = await getDatabase().prepare('SELECT id, name, created_at FROM project_profiles ORDER BY id ASC').all<{ id: number; name: string; created_at: number }>();
@@ -40,6 +43,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const unauthorized = requireAdmin(request);
+  if (unauthorized) return unauthorized;
   const body = await request.json() as { name?: string };
   const name = body.name?.trim();
   if (!name) return Response.json({ error: 'Escribe el nombre del proyecto o lotificación.' }, { status: 400 });
@@ -59,6 +64,8 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const unauthorized = requireAdmin(request);
+  if (unauthorized) return unauthorized;
   const body = await request.json() as { activeProfileId?: number; name?: string };
   const id = Number(body.activeProfileId);
   if (!Number.isInteger(id) || id < 1) return Response.json({ error: 'Selecciona un perfil válido.' }, { status: 400 });
@@ -83,6 +90,8 @@ function keyFromMediaUrl(value?: string | null) {
 }
 
 export async function DELETE(request: Request) {
+  const unauthorized = requireAdmin(request);
+  if (unauthorized) return unauthorized;
   const id = Number(new URL(request.url).searchParams.get('id'));
   if (!Number.isInteger(id) || id < 1) return Response.json({ error: 'Selecciona un perfil válido.' }, { status: 400 });
   try {

@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Building2, CalendarCheck, CheckCircle2, Copy, ExternalLink, Eye, EyeOff, ImagePlus, Loader2, Save, Trash2, Upload, Video } from 'lucide-react';
+import { ArrowLeft, Building2, CalendarCheck, CheckCircle2, Copy, ExternalLink, Eye, EyeOff, ImagePlus, Loader2, LogOut, LockKeyhole, Save, Trash2, Upload, Video } from 'lucide-react';
 
 type ContentType = 'solar' | 'testimonial';
 type ContentItem = { id: number; type: ContentType; title: string; description?: string; image_url: string };
@@ -52,6 +52,10 @@ const textFields: { key: keyof SiteTexts; label: string; multiline?: boolean }[]
 ];
 
 export default function AdminPage() {
+  const [authenticated, setAuthenticated] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [loginDetails, setLoginDetails] = useState({ username: '', password: '' });
+  const [loginError, setLoginError] = useState('');
   const [heroVideoUrl, setHeroVideoUrl] = useState('');
   const [savedUrl, setSavedUrl] = useState('');
   const [profiles, setProfiles] = useState<ProjectProfile[]>([]);
@@ -90,7 +94,37 @@ export default function AdminPage() {
     }
   }
 
-  useEffect(() => { loadAdmin(); }, []);
+  useEffect(() => {
+    fetch('/api/admin/session', { cache: 'no-store' }).then(async response => {
+      const data = await response.json();
+      setAuthenticated(Boolean(data.authenticated));
+      if (data.authenticated) await loadAdmin();
+    }).catch(() => {}).finally(() => setCheckingSession(false));
+  }, []);
+
+  async function login(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving('login');
+    setLoginError('');
+    const response = await fetch('/api/admin/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(loginDetails) });
+    const data = await response.json();
+    setSaving('');
+    if (!response.ok) {
+      setLoginError(data.error ?? 'No pudimos iniciar sesión.');
+      return;
+    }
+    setAuthenticated(true);
+    setLoginDetails({ username: '', password: '' });
+    await loadAdmin();
+  }
+
+  async function logout() {
+    await fetch('/api/admin/session', { method: 'DELETE' });
+    setAuthenticated(false);
+    setProfiles([]);
+    setItems([]);
+    setAppointments([]);
+  }
 
   async function saveVideo(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -272,8 +306,25 @@ export default function AdminPage() {
     setMessage('Enlace del perfil copiado.');
   }
 
-  return <main className="admin-page">
+  if (checkingSession) return <main className="admin-page"><header className="schedule-header"><a href="/" aria-label="My Punta Cana Broker, inicio"><Brand /></a><a className="back-link" href="/"><ArrowLeft /> Volver al inicio</a></header><section className="admin-login"><Loader2 className="preview-loader" /><p>Verificando acceso…</p></section></main>;
+
+  if (!authenticated) return <main className="admin-page">
     <header className="schedule-header"><a href="/" aria-label="My Punta Cana Broker, inicio"><Brand /></a><a className="back-link" href="/"><ArrowLeft /> Volver al inicio</a></header>
+    <section className="admin-login">
+      <form className="login-card" onSubmit={login}>
+        <span className="kicker"><LockKeyhole /> ACCESO PRIVADO</span>
+        <h1>Panel administrativo</h1>
+        <p>Inicia sesión para administrar perfiles, citas, fotos, testimonios y textos de My Punta Cana Broker.</p>
+        {loginError && <div className="admin-error">{loginError}</div>}
+        <label>Usuario<input value={loginDetails.username} onChange={event => setLoginDetails(current => ({ ...current, username: event.target.value }))} autoComplete="username" required /></label>
+        <label>Contraseña<input type="password" value={loginDetails.password} onChange={event => setLoginDetails(current => ({ ...current, password: event.target.value }))} autoComplete="current-password" required /></label>
+        <button className="btn dark admin-save" type="submit" disabled={saving === 'login'}>{saving === 'login' ? <Loader2 /> : <LockKeyhole />} ENTRAR AL PANEL</button>
+      </form>
+    </section>
+  </main>;
+
+  return <main className="admin-page">
+    <header className="schedule-header"><a href="/" aria-label="My Punta Cana Broker, inicio"><Brand /></a><div className="admin-header-actions"><button type="button" onClick={logout}><LogOut /> Cerrar sesión</button><a className="back-link" href="/"><ArrowLeft /> Volver al inicio</a></div></header>
     <section className="admin-hero"><span className="kicker"><ImagePlus /> PANEL ADMINISTRATIVO</span><h1>Administrar contenido</h1><p>Actualiza el video principal, sube fotos de solares y publica testimonios con fotos de clientes en sus solares.</p></section>
     <section className="admin-shell">
       {error && <div className="admin-error">{error}</div>}

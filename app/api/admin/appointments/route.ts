@@ -1,4 +1,5 @@
 import { getDatabase } from '@/db';
+import { requireAdmin } from '@/lib/admin-auth';
 const ACTIVE_PROFILE_KEY = 'active_project_profile_id';
 
 async function activeProfileId() {
@@ -6,7 +7,9 @@ async function activeProfileId() {
   return Number(row?.value) || 1;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const unauthorized = requireAdmin(request);
+  if (unauthorized) return unauthorized;
   try {
     const result = await getDatabase().prepare('SELECT id, appointment_date, appointment_time, client_name, phone, email, reservation_code, created_at FROM appointments WHERE profile_id = ? ORDER BY appointment_date DESC, appointment_time DESC').bind(await activeProfileId()).all();
     return Response.json({ appointments: result.results ?? [] });
@@ -17,6 +20,8 @@ export async function GET() {
 }
 
 export async function DELETE(request: Request) {
+  const unauthorized = requireAdmin(request);
+  if (unauthorized) return unauthorized;
   const id = Number(new URL(request.url).searchParams.get('id'));
   if (!Number.isInteger(id) || id < 1) return Response.json({ error: 'Cita inválida.' }, { status: 400 });
   try {
