@@ -23,19 +23,29 @@ async function activeProfileId() {
   return Number(row?.value) || 1;
 }
 
+async function profileIdFromRequest(request: Request) {
+  const requestedId = Number(new URL(request.url).searchParams.get('profileId'));
+  if (Number.isInteger(requestedId) && requestedId > 0) {
+    const profile = await getDatabase().prepare('SELECT id FROM project_profiles WHERE id = ?').bind(requestedId).first<{ id: number }>();
+    if (profile) return requestedId;
+  }
+  return activeProfileId();
+}
+
 async function saveProfileSetting(profileId: number, key: string, value: string) {
   return getDatabase().prepare('INSERT INTO project_profile_settings (profile_id, key, value, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at').bind(profileId, key, value, Math.floor(Date.now() / 1000)).run();
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const profileId = await activeProfileId();
+    const profileId = await profileIdFromRequest(request);
     const result = await getDatabase().prepare('SELECT key, value FROM project_profile_settings WHERE profile_id = ? AND key IN (?, ?, ?)').bind(profileId, VIDEO_URL_KEY, TESTIMONIALS_ENABLED_KEY, PROJECT_NAME_KEY).all<{ key: string; value: string }>();
+    const profile = await getDatabase().prepare('SELECT name FROM project_profiles WHERE id = ?').bind(profileId).first<{ name: string }>();
     const profileSettings = Object.fromEntries((result.results ?? []).map(item => [item.key, item.value]));
     const legacyResult = await getDatabase().prepare('SELECT key, value FROM site_settings WHERE key IN (?, ?, ?)').bind(VIDEO_URL_KEY, TESTIMONIALS_ENABLED_KEY, PROJECT_NAME_KEY).all<{ key: string; value: string }>();
     const legacySettings = Object.fromEntries((legacyResult.results ?? []).map(item => [item.key, item.value]));
     const settings = { ...legacySettings, ...profileSettings };
-    return Response.json({ heroVideoUrl: settings[VIDEO_URL_KEY] ?? '', testimonialsEnabled: settings[TESTIMONIALS_ENABLED_KEY] !== 'false', projectName: settings[PROJECT_NAME_KEY] ?? '' });
+    return Response.json({ profileId, heroVideoUrl: settings[VIDEO_URL_KEY] ?? '', testimonialsEnabled: settings[TESTIMONIALS_ENABLED_KEY] !== 'false', projectName: settings[PROJECT_NAME_KEY] || profile?.name || '' });
   } catch (error) {
     console.error('site_settings_get_error', error);
     return Response.json({ heroVideoUrl: '', testimonialsEnabled: true, projectName: '' });

@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Building2, CalendarCheck, CheckCircle2, Eye, EyeOff, ImagePlus, Loader2, Save, Trash2, Upload, Video } from 'lucide-react';
+import { ArrowLeft, Building2, CalendarCheck, CheckCircle2, Copy, ExternalLink, Eye, EyeOff, ImagePlus, Loader2, Save, Trash2, Upload, Video } from 'lucide-react';
 
 type ContentType = 'solar' | 'testimonial';
 type ContentItem = { id: number; type: ContentType; title: string; description?: string; image_url: string };
@@ -186,6 +186,11 @@ export default function AdminPage() {
 
   const solarItems = items.filter(item => item.type === 'solar');
   const testimonialItems = items.filter(item => item.type === 'testimonial');
+  const publicProfileUrl = (id: number) => typeof window === 'undefined' ? `/proyecto/${id}` : `${window.location.origin}/proyecto/${id}`;
+  async function copyProfileLink(id: number) {
+    await navigator.clipboard?.writeText(publicProfileUrl(id));
+    setMessage('Enlace del perfil copiado.');
+  }
 
   return <main className="admin-page">
     <header className="schedule-header"><a href="/" aria-label="My Punta Cana Broker, inicio"><Brand /></a><a className="back-link" href="/"><ArrowLeft /> Volver al inicio</a></header>
@@ -197,7 +202,11 @@ export default function AdminPage() {
         <span className="kicker"><Building2 /> PERFILES DE PROYECTO</span>
         <h2>Administrar perfiles</h2>
         <p className="admin-help">Cada perfil guarda su nombre de proyecto, video principal, fotos de solares, testimonios y citas por separado. La página principal muestra el perfil activo.</p>
-        <div className="profile-pills">{profiles.map(profile => <button key={profile.id} type="button" className={profile.id === activeProfileId ? 'active' : ''} onClick={() => selectProfile(profile.id)} disabled={saving === 'select-profile'}>{profile.name}</button>)}</div>
+        <div className="profile-links">{profiles.map(profile => <div className={profile.id === activeProfileId ? 'profile-link active' : 'profile-link'} key={profile.id}>
+          <button type="button" onClick={() => selectProfile(profile.id)} disabled={saving === 'select-profile'}>{profile.name}<small>{profile.id === activeProfileId ? 'Perfil activo' : 'Activar perfil'}</small></button>
+          <a href={`/proyecto/${profile.id}`} target="_blank" rel="noopener noreferrer"><ExternalLink /> Abrir web</a>
+          <button type="button" className="copy-link" onClick={() => copyProfileLink(profile.id)}><Copy /> Copiar enlace</button>
+        </div>)}</div>
         <form className="profile-create" onSubmit={createProfile}>
           <input value={newProfileName} onChange={event => setNewProfileName(event.target.value)} placeholder="Nombre del nuevo proyecto o lotificación" disabled={saving === 'create-profile'} />
           <button className="btn dark" type="submit" disabled={saving === 'create-profile'}>{saving === 'create-profile' ? <Loader2 /> : <Building2 />} CREAR PERFIL</button>

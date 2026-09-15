@@ -19,11 +19,20 @@ async function activeProfileId() {
   return Number(row?.value) || 1;
 }
 
+async function profileIdFromRequest(request: Request) {
+  const requestedId = Number(new URL(request.url).searchParams.get('profileId'));
+  if (Number.isInteger(requestedId) && requestedId > 0) {
+    const profile = await getDatabase().prepare('SELECT id FROM project_profiles WHERE id = ?').bind(requestedId).first<{ id: number }>();
+    if (profile) return requestedId;
+  }
+  return activeProfileId();
+}
+
 export async function GET(request: Request) {
   const type = new URL(request.url).searchParams.get('type') as ContentType | null;
   if (type && !allowedTypes.has(type)) return Response.json({ error: 'Tipo de contenido inválido.' }, { status: 400 });
   try {
-    const profileId = await activeProfileId();
+    const profileId = await profileIdFromRequest(request);
     const sql = type ? 'SELECT id, type, title, description, image_url, created_at FROM content_items WHERE profile_id = ? AND type = ? ORDER BY created_at DESC' : 'SELECT id, type, title, description, image_url, created_at FROM content_items WHERE profile_id = ? ORDER BY created_at DESC';
     const result = type ? await getDatabase().prepare(sql).bind(profileId, type).all() : await getDatabase().prepare(sql).bind(profileId).all();
     return Response.json({ items: result.results ?? [] });
