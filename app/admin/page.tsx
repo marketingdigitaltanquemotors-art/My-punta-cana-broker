@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { ArrowLeft, CalendarCheck, CheckCircle2, ImagePlus, Loader2, Save, Trash2, Upload, Video } from 'lucide-react';
+import { ArrowLeft, CalendarCheck, CheckCircle2, Eye, EyeOff, ImagePlus, Loader2, Save, Trash2, Upload, Video } from 'lucide-react';
 
 type ContentType = 'solar' | 'testimonial';
 type ContentItem = { id: number; type: ContentType; title: string; description?: string; image_url: string };
@@ -12,6 +12,7 @@ const labels = { solar: 'Foto de solar', testimonial: 'Testimonio' };
 export default function AdminPage() {
   const [heroVideoUrl, setHeroVideoUrl] = useState('');
   const [savedUrl, setSavedUrl] = useState('');
+  const [testimonialsEnabled, setTestimonialsEnabled] = useState(true);
   const [items, setItems] = useState<ContentItem[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,6 +30,7 @@ export default function AdminPage() {
       const appointmentsData = await appointmentsResponse.json();
       setHeroVideoUrl(settings.heroVideoUrl ?? '');
       setSavedUrl(settings.heroVideoUrl ?? '');
+      setTestimonialsEnabled(settings.testimonialsEnabled !== false);
       setItems(content.items ?? []);
       setAppointments(appointmentsData.appointments ?? []);
     } catch {
@@ -75,6 +77,22 @@ export default function AdminPage() {
     setMessage('Video quitado. La portada usará la imagen principal.');
   }
 
+  async function toggleTestimonials() {
+    const nextValue = !testimonialsEnabled;
+    setSaving('testimonials-toggle');
+    setMessage('');
+    setError('');
+    const response = await fetch('/api/site-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ testimonialsEnabled: nextValue }) });
+    const data = await response.json();
+    setSaving('');
+    if (!response.ok) {
+      setError(data.error ?? 'No pudimos cambiar el estado de testimonios.');
+      return;
+    }
+    setTestimonialsEnabled(nextValue);
+    setMessage(nextValue ? 'Testimonios activados en la página principal.' : 'Testimonios desactivados de la página principal.');
+  }
+
   async function uploadContent(event: React.FormEvent<HTMLFormElement>, type: ContentType) {
     event.preventDefault();
     setSaving(type);
@@ -109,6 +127,21 @@ export default function AdminPage() {
     setMessage('Contenido eliminado.');
   }
 
+  async function deleteAppointment(id: number) {
+    setSaving(`appointment-${id}`);
+    setMessage('');
+    setError('');
+    const response = await fetch(`/api/admin/appointments?id=${id}`, { method: 'DELETE' });
+    const data = await response.json();
+    setSaving('');
+    if (!response.ok) {
+      setError(data.error ?? 'No pudimos eliminar la cita.');
+      return;
+    }
+    setAppointments(current => current.filter(appointment => appointment.id !== id));
+    setMessage('Cita eliminada.');
+  }
+
   const solarItems = items.filter(item => item.type === 'solar');
   const testimonialItems = items.filter(item => item.type === 'testimonial');
 
@@ -129,10 +162,16 @@ export default function AdminPage() {
         </form>
         <UploadCard type="solar" title="Subir foto de solar" description="Nombre del solar o ubicación" saving={saving === 'solar'} onSubmit={uploadContent} />
         <UploadCard type="testimonial" title="Subir testimonio" description="Nombre del cliente" saving={saving === 'testimonial'} onSubmit={uploadContent} />
+        <section className="admin-card">
+          <span className="kicker">{testimonialsEnabled ? <Eye /> : <EyeOff />} TESTIMONIOS</span>
+          <h2>Mostrar testimonios</h2>
+          <p className="admin-help">Activa o desactiva el apartado de testimonios en la página principal sin borrar las fotos ni los textos guardados.</p>
+          <button className="btn dark admin-save" type="button" onClick={toggleTestimonials} disabled={loading || saving === 'testimonials-toggle'}>{saving === 'testimonials-toggle' ? <Loader2 /> : testimonialsEnabled ? <EyeOff /> : <Eye />} {testimonialsEnabled ? 'DESACTIVAR' : 'ACTIVAR'}</button>
+        </section>
       </div>
       <ContentList title="Fotos de solares publicadas" items={solarItems} deleting={saving} onDelete={deleteContent} />
       <ContentList title="Testimonios publicados" items={testimonialItems} deleting={saving} onDelete={deleteContent} />
-      <AppointmentsList appointments={appointments} />
+      <AppointmentsList appointments={appointments} deleting={saving} onDelete={deleteAppointment} />
     </section>
   </main>;
 }
@@ -152,6 +191,6 @@ function ContentList({ title, items, deleting, onDelete }: { title: string; item
   return <section className="admin-list"><h2>{title}</h2>{items.length ? <div className="admin-items">{items.map(item => <article key={item.id} className="admin-item"><img src={item.image_url} alt={item.title} /><div><b>{item.title}</b>{item.description && <p>{item.description}</p>}</div><button type="button" onClick={() => onDelete(item.id)} disabled={deleting === `delete-${item.id}`} aria-label={`Eliminar ${item.title}`}>{deleting === `delete-${item.id}` ? <Loader2 /> : <Trash2 />}</button></article>)}</div> : <p className="admin-help">Todavía no hay contenido en esta sección.</p>}</section>;
 }
 
-function AppointmentsList({ appointments }: { appointments: Appointment[] }) {
-  return <section className="admin-list appointments-list"><span className="kicker"><CalendarCheck /> CITAS</span><h2>Citas agendadas</h2>{appointments.length ? <div className="appointments-table"><table><thead><tr><th>Cliente</th><th>WhatsApp</th><th>Correo</th><th>Fecha</th><th>Hora</th><th>Código</th></tr></thead><tbody>{appointments.map(appointment => <tr key={appointment.id}><td>{appointment.client_name}</td><td><a href={`https://wa.me/${appointment.phone.replace(/\D/g, '')}`}>{appointment.phone}</a></td><td><a href={`mailto:${appointment.email}`}>{appointment.email}</a></td><td>{appointment.appointment_date}</td><td>{appointment.appointment_time}</td><td><b>{appointment.reservation_code}</b></td></tr>)}</tbody></table></div> : <p className="admin-help">Todavía no hay citas agendadas.</p>}</section>;
+function AppointmentsList({ appointments, deleting, onDelete }: { appointments: Appointment[]; deleting: string; onDelete: (id: number) => void }) {
+  return <section className="admin-list appointments-list"><span className="kicker"><CalendarCheck /> CITAS</span><h2>Citas agendadas</h2>{appointments.length ? <div className="appointments-table"><table><thead><tr><th>Cliente</th><th>WhatsApp</th><th>Correo</th><th>Fecha</th><th>Hora</th><th>Código</th><th>Acción</th></tr></thead><tbody>{appointments.map(appointment => <tr key={appointment.id}><td>{appointment.client_name}</td><td><a href={`https://wa.me/${appointment.phone.replace(/\D/g, '')}`}>{appointment.phone}</a></td><td><a href={`mailto:${appointment.email}`}>{appointment.email}</a></td><td>{appointment.appointment_date}</td><td>{appointment.appointment_time}</td><td><b>{appointment.reservation_code}</b></td><td><button className="table-delete" type="button" onClick={() => onDelete(appointment.id)} disabled={deleting === `appointment-${appointment.id}`} aria-label={`Eliminar cita de ${appointment.client_name}`}>{deleting === `appointment-${appointment.id}` ? <Loader2 /> : <Trash2 />}</button></td></tr>)}</tbody></table></div> : <p className="admin-help">Todavía no hay citas agendadas.</p>}</section>;
 }

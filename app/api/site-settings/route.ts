@@ -1,6 +1,7 @@
 import { getDatabase, getMediaBucket } from '@/db';
 
 const VIDEO_URL_KEY = 'hero_video_url';
+const TESTIMONIALS_ENABLED_KEY = 'testimonials_enabled';
 const videoTypes = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
 const MAX_VIDEO_SIZE = 80 * 1024 * 1024;
 const isValidVideoUrl = (value: string) => {
@@ -17,11 +18,12 @@ const mediaUrl = (key: string) => `/api/content/image?key=${encodeURIComponent(k
 
 export async function GET() {
   try {
-    const result = await getDatabase().prepare('SELECT value FROM site_settings WHERE key = ?').bind(VIDEO_URL_KEY).first<{ value: string }>();
-    return Response.json({ heroVideoUrl: result?.value ?? '' });
+    const result = await getDatabase().prepare('SELECT key, value FROM site_settings WHERE key IN (?, ?)').bind(VIDEO_URL_KEY, TESTIMONIALS_ENABLED_KEY).all<{ key: string; value: string }>();
+    const settings = Object.fromEntries((result.results ?? []).map(item => [item.key, item.value]));
+    return Response.json({ heroVideoUrl: settings[VIDEO_URL_KEY] ?? '', testimonialsEnabled: settings[TESTIMONIALS_ENABLED_KEY] !== 'false' });
   } catch (error) {
     console.error('site_settings_get_error', error);
-    return Response.json({ heroVideoUrl: '' });
+    return Response.json({ heroVideoUrl: '', testimonialsEnabled: true });
   }
 }
 
@@ -39,7 +41,20 @@ export async function PUT(request: Request) {
     await getMediaBucket().put(uploadedKey, video.stream(), { httpMetadata: { contentType: video.type } });
     heroVideoUrl = mediaUrl(uploadedKey);
   } else {
-    const body = await request.json() as { heroVideoUrl?: string };
+    const body = await request.json() as { heroVideoUrl?: string; testimonialsEnabled?: boolean };
+    const updates: Promise<unknown>[] = [];
+    if (typeof body.testimonialsEnabled === 'boolean') {
+      updates.push(getDatabase().prepare('INSERT INTO site_settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at').bind(TESTIMONIALS_ENABLED_KEY, String(body.testimonialsEnabled), Math.floor(Date.now() / 1000)).run());
+    }
+    if (!('heroVideoUrl' in body)) {
+      try {
+        await Promise.all(updates);
+        return Response.json({ testimonialsEnabled: body.testimonialsEnabled });
+      } catch (error) {
+        console.error('site_settings_save_error', error);
+        return Response.json({ error: 'No pudimos guardar la configuración. Intenta de nuevo.' }, { status: 503 });
+      }
+    }
     heroVideoUrl = body.heroVideoUrl?.trim() ?? '';
   }
   if (!isValidVideoUrl(heroVideoUrl)) return Response.json({ error: 'Pega una URL válida que comience con http o https.' }, { status: 400 });
