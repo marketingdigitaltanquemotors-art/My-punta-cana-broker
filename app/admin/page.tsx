@@ -6,9 +6,50 @@ type ContentType = 'solar' | 'testimonial';
 type ContentItem = { id: number; type: ContentType; title: string; description?: string; image_url: string };
 type Appointment = { id: number; appointment_date: string; appointment_time: string; client_name: string; phone: string; email: string; reservation_code: string; created_at: number };
 type ProjectProfile = { id: number; name: string; created_at: number };
+type SiteTexts = typeof defaultTexts;
 
 function Brand() { return <span className="brand"><span className="logo-mark">M</span><span><b>MY PUNTA CANA</b><small>BROKER</small></span></span>; }
 const labels = { solar: 'Foto de solar', testimonial: 'Testimonio' };
+const defaultTexts = {
+  heroEyebrow: 'PUNTA CANA · BÁVARO',
+  heroTitle: 'Encuentra tu solar en el centro de Punta Cana-Bávaro, cerca de todo.',
+  heroSubtitle: 'Agenda una visita personalizada en Punta Cana-Bávaro de manera rápida y sencilla.',
+  offerOne: 'Desde un 15%',
+  offerTwo: 'Desde 150$ por mentro',
+  builtKicker: 'CASAS CONSTRUIDAS',
+  builtTitle: 'Imagina tu casa hecha realidad en Punta Cana-Bávaro.',
+  builtText: 'Estos solares son una oportunidad para construir cerca de todo, con una visión clara de comunidad, acceso y futuro crecimiento.',
+  solaresKicker: 'SOLARES',
+  solaresTitle: 'Fotos de solares disponibles',
+  solaresEmpty: 'Muy pronto verás nuevas fotos de solares.',
+  testimonialsKicker: 'TESTIMONIOS',
+  testimonialsTitle: 'Testimonio de clientes en sus solares',
+  testimonialsEmpty: 'Muy pronto compartiremos testimonios de nuestros clientes.',
+  visitKicker: 'CONOCE EL LUGAR',
+  visitTitle: 'Tu próximo proyecto comienza con una visita.',
+  footerTagline: 'Solares y terrenos en Punta Cana-Bávaro',
+  footerSlogan: 'Invierte en tierra. Construye tu futuro.'
+};
+const textFields: { key: keyof SiteTexts; label: string; multiline?: boolean }[] = [
+  { key: 'heroEyebrow', label: 'Etiqueta del hero' },
+  { key: 'heroTitle', label: 'Título principal', multiline: true },
+  { key: 'heroSubtitle', label: 'Texto debajo del título', multiline: true },
+  { key: 'offerOne', label: 'Oferta 1' },
+  { key: 'offerTwo', label: 'Oferta 2' },
+  { key: 'builtKicker', label: 'Etiqueta de casas construidas' },
+  { key: 'builtTitle', label: 'Título de casas construidas', multiline: true },
+  { key: 'builtText', label: 'Texto de casas construidas', multiline: true },
+  { key: 'solaresKicker', label: 'Etiqueta de solares' },
+  { key: 'solaresTitle', label: 'Título de solares' },
+  { key: 'solaresEmpty', label: 'Texto cuando no hay fotos', multiline: true },
+  { key: 'testimonialsKicker', label: 'Etiqueta de testimonios' },
+  { key: 'testimonialsTitle', label: 'Título de testimonios' },
+  { key: 'testimonialsEmpty', label: 'Texto cuando no hay testimonios', multiline: true },
+  { key: 'visitKicker', label: 'Etiqueta de llamado a visita' },
+  { key: 'visitTitle', label: 'Título de llamado a visita', multiline: true },
+  { key: 'footerTagline', label: 'Texto del footer' },
+  { key: 'footerSlogan', label: 'Frase final del footer' }
+];
 
 export default function AdminPage() {
   const [heroVideoUrl, setHeroVideoUrl] = useState('');
@@ -17,6 +58,7 @@ export default function AdminPage() {
   const [activeProfileId, setActiveProfileId] = useState(1);
   const [newProfileName, setNewProfileName] = useState('');
   const [testimonialsEnabled, setTestimonialsEnabled] = useState(true);
+  const [texts, setTexts] = useState<SiteTexts>(defaultTexts);
   const [items, setItems] = useState<ContentItem[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,6 +80,7 @@ export default function AdminPage() {
       setHeroVideoUrl(settings.heroVideoUrl ?? '');
       setSavedUrl(settings.heroVideoUrl ?? '');
       setTestimonialsEnabled(settings.testimonialsEnabled !== false);
+      setTexts({ ...defaultTexts, ...(settings.texts ?? {}) });
       setItems(content.items ?? []);
       setAppointments(appointmentsData.appointments ?? []);
     } catch {
@@ -117,6 +160,43 @@ export default function AdminPage() {
     }
     setMessage('Perfil activado.');
     await loadAdmin();
+  }
+
+  async function deleteProfile(profile: ProjectProfile) {
+    if (profiles.length <= 1) {
+      setError('Debes dejar al menos un perfil.');
+      return;
+    }
+    const confirmed = window.confirm(`¿Eliminar el perfil "${profile.name}"? También se eliminarán sus fotos, testimonios y citas.`);
+    if (!confirmed) return;
+    setSaving(`profile-${profile.id}`);
+    setMessage('');
+    setError('');
+    const response = await fetch(`/api/project-profiles?id=${profile.id}`, { method: 'DELETE' });
+    const data = await response.json();
+    setSaving('');
+    if (!response.ok) {
+      setError(data.error ?? 'No pudimos eliminar el perfil.');
+      return;
+    }
+    setMessage('Perfil eliminado.');
+    await loadAdmin();
+  }
+
+  async function saveTexts(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving('texts');
+    setMessage('');
+    setError('');
+    const response = await fetch('/api/site-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texts }) });
+    const data = await response.json();
+    setSaving('');
+    if (!response.ok) {
+      setError(data.error ?? 'No pudimos guardar los textos.');
+      return;
+    }
+    setTexts({ ...defaultTexts, ...(data.texts ?? texts) });
+    setMessage('Textos de la página actualizados.');
   }
 
   async function toggleTestimonials() {
@@ -206,12 +286,20 @@ export default function AdminPage() {
           <button type="button" onClick={() => selectProfile(profile.id)} disabled={saving === 'select-profile'}>{profile.name}<small>{profile.id === activeProfileId ? 'Perfil activo' : 'Activar perfil'}</small></button>
           <a href={`/proyecto/${profile.id}`} target="_blank" rel="noopener noreferrer"><ExternalLink /> Abrir web</a>
           <button type="button" className="copy-link" onClick={() => copyProfileLink(profile.id)}><Copy /> Copiar enlace</button>
+          <button type="button" className="delete-profile" onClick={() => deleteProfile(profile)} disabled={profiles.length <= 1 || saving === `profile-${profile.id}`}>{saving === `profile-${profile.id}` ? <Loader2 /> : <Trash2 />} Eliminar</button>
         </div>)}</div>
         <form className="profile-create" onSubmit={createProfile}>
           <input value={newProfileName} onChange={event => setNewProfileName(event.target.value)} placeholder="Nombre del nuevo proyecto o lotificación" disabled={saving === 'create-profile'} />
           <button className="btn dark" type="submit" disabled={saving === 'create-profile'}>{saving === 'create-profile' ? <Loader2 /> : <Building2 />} CREAR PERFIL</button>
         </form>
       </section>
+      <form className="admin-list advanced-texts" onSubmit={saveTexts}>
+        <span className="kicker"><Save /> CONFIGURACIÓN AVANZADA</span>
+        <h2>Editar textos de la página</h2>
+        <p className="admin-help">Estos textos se guardan en el perfil activo. Si cambias a otro perfil, podrás tener textos diferentes para esa web.</p>
+        <div className="text-editor-grid">{textFields.map(field => <label key={field.key}>{field.label}{field.multiline ? <textarea value={texts[field.key]} onChange={event => setTexts(current => ({ ...current, [field.key]: event.target.value }))} /> : <input value={texts[field.key]} onChange={event => setTexts(current => ({ ...current, [field.key]: event.target.value }))} />}</label>)}</div>
+        <button className="btn dark admin-save" type="submit" disabled={saving === 'texts'}>{saving === 'texts' ? <Loader2 /> : <Save />} GUARDAR TEXTOS</button>
+      </form>
       <div className="admin-grid">
         <form onSubmit={saveVideo} className="admin-card">
           <span className="kicker"><Video /> VIDEO PRINCIPAL</span>

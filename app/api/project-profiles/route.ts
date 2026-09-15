@@ -1,4 +1,5 @@
 import { getDatabase } from '@/db';
+import { getMediaBucket } from '@/db';
 
 const ACTIVE_PROFILE_KEY = 'active_project_profile_id';
 
@@ -73,5 +74,48 @@ export async function PUT(request: Request) {
   } catch (error) {
     console.error('project_profiles_update_error', error);
     return Response.json({ error: 'No pudimos activar el perfil.' }, { status: 503 });
+  }
+}
+
+function keyFromMediaUrl(value?: string | null) {
+  if (!value?.startsWith('/api/content/image?key=')) return '';
+  return new URLSearchParams(value.split('?')[1] ?? '').get('key') ?? '';
+}
+
+export async function DELETE(request: Request) {
+  const id = Number(new URL(request.url).searchParams.get('id'));
+  if (!Number.isInteger(id) || id < 1) return Response.json({ error: 'Selecciona un perfil válido.' }, { status: 400 });
+  try {
+    await ensureDefaultProfile();
+    const profiles = await getDatabase().prepare('SELECT id FROM project_profiles ORDER BY id ASC').all<{ id: number }>();
+    const profileIds = profiles.results ?? [];
+    if (!profileIds.some(profile => profile.id === id)) return Response.json({ error: 'Ese perfil no existe.' }, { status: 404 });
+    if (profileIds.length <= 1) return Response.json({ error: 'Debes dejar al menos un perfil.' }, { status: 400 });
+
+    const content = await getDatabase().prepare('SELECT image_key FROM content_items WHERE profile_id = ?').bind(id).all<{ image_key: string }>();
+    const settings = await getDatabase().prepare('SELECT value FROM project_profile_settings WHERE profile_id = ? AND key = ?').bind(id, 'hero_video_url').all<{ value: string }>();
+    const mediaKeys = [
+      ...(content.results ?? []).map(item => item.image_key),
+      ...(settings.results ?? []).map(item => keyFromMediaUrl(item.value)).filter(Boolean)
+    ];
+
+    await getDatabase().batch([
+      getDatabase().prepare('DELETE FROM appointments WHERE profile_id = ?').bind(id),
+      getDatabase().prepare('DELETE FROM content_items WHERE profile_id = ?').bind(id),
+      getDatabase().prepare('DELETE FROM project_profile_settings WHERE profile_id = ?').bind(id),
+      getDatabase().prepare('DELETE FROM project_profiles WHERE id = ?').bind(id)
+    ]);
+    await Promise.all(mediaKeys.map(key => getMediaBucket().delete(key).catch(() => {})));
+
+    let activeId = await activeProfileId();
+    if (activeId === id) {
+      const replacement = await getDatabase().prepare('SELECT id FROM project_profiles ORDER BY id ASC LIMIT 1').first<{ id: number }>();
+      activeId = replacement?.id ?? 1;
+      await setActiveProfile(activeId);
+    }
+    return Response.json({ ok: true, activeProfileId: activeId });
+  } catch (error) {
+    console.error('project_profiles_delete_error', error);
+    return Response.json({ error: 'No pudimos eliminar el perfil.' }, { status: 503 });
   }
 }

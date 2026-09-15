@@ -4,6 +4,27 @@ const VIDEO_URL_KEY = 'hero_video_url';
 const TESTIMONIALS_ENABLED_KEY = 'testimonials_enabled';
 const PROJECT_NAME_KEY = 'project_name';
 const ACTIVE_PROFILE_KEY = 'active_project_profile_id';
+const TEXT_DEFAULTS = {
+  heroEyebrow: 'PUNTA CANA · BÁVARO',
+  heroTitle: 'Encuentra tu solar en el centro de Punta Cana-Bávaro, cerca de todo.',
+  heroSubtitle: 'Agenda una visita personalizada en Punta Cana-Bávaro de manera rápida y sencilla.',
+  offerOne: 'Desde un 15%',
+  offerTwo: 'Desde 150$ por mentro',
+  builtKicker: 'CASAS CONSTRUIDAS',
+  builtTitle: 'Imagina tu casa hecha realidad en Punta Cana-Bávaro.',
+  builtText: 'Estos solares son una oportunidad para construir cerca de todo, con una visión clara de comunidad, acceso y futuro crecimiento.',
+  solaresKicker: 'SOLARES',
+  solaresTitle: 'Fotos de solares disponibles',
+  solaresEmpty: 'Muy pronto verás nuevas fotos de solares.',
+  testimonialsKicker: 'TESTIMONIOS',
+  testimonialsTitle: 'Testimonio de clientes en sus solares',
+  testimonialsEmpty: 'Muy pronto compartiremos testimonios de nuestros clientes.',
+  visitKicker: 'CONOCE EL LUGAR',
+  visitTitle: 'Tu próximo proyecto comienza con una visita.',
+  footerTagline: 'Solares y terrenos en Punta Cana-Bávaro',
+  footerSlogan: 'Invierte en tierra. Construye tu futuro.'
+};
+const TEXT_KEYS = Object.keys(TEXT_DEFAULTS);
 const videoTypes = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
 const MAX_VIDEO_SIZE = 80 * 1024 * 1024;
 const isValidVideoUrl = (value: string) => {
@@ -39,13 +60,16 @@ async function saveProfileSetting(profileId: number, key: string, value: string)
 export async function GET(request: Request) {
   try {
     const profileId = await profileIdFromRequest(request);
-    const result = await getDatabase().prepare('SELECT key, value FROM project_profile_settings WHERE profile_id = ? AND key IN (?, ?, ?)').bind(profileId, VIDEO_URL_KEY, TESTIMONIALS_ENABLED_KEY, PROJECT_NAME_KEY).all<{ key: string; value: string }>();
+    const wantedKeys = [VIDEO_URL_KEY, TESTIMONIALS_ENABLED_KEY, PROJECT_NAME_KEY, ...TEXT_KEYS.map(key => `text_${key}`)];
+    const placeholders = wantedKeys.map(() => '?').join(',');
+    const result = await getDatabase().prepare(`SELECT key, value FROM project_profile_settings WHERE profile_id = ? AND key IN (${placeholders})`).bind(profileId, ...wantedKeys).all<{ key: string; value: string }>();
     const profile = await getDatabase().prepare('SELECT name FROM project_profiles WHERE id = ?').bind(profileId).first<{ name: string }>();
     const profileSettings = Object.fromEntries((result.results ?? []).map(item => [item.key, item.value]));
     const legacyResult = await getDatabase().prepare('SELECT key, value FROM site_settings WHERE key IN (?, ?, ?)').bind(VIDEO_URL_KEY, TESTIMONIALS_ENABLED_KEY, PROJECT_NAME_KEY).all<{ key: string; value: string }>();
     const legacySettings = Object.fromEntries((legacyResult.results ?? []).map(item => [item.key, item.value]));
     const settings = { ...legacySettings, ...profileSettings };
-    return Response.json({ profileId, heroVideoUrl: settings[VIDEO_URL_KEY] ?? '', testimonialsEnabled: settings[TESTIMONIALS_ENABLED_KEY] !== 'false', projectName: settings[PROJECT_NAME_KEY] || profile?.name || '' });
+    const texts = Object.fromEntries(Object.entries(TEXT_DEFAULTS).map(([key, value]) => [key, settings[`text_${key}`] ?? value]));
+    return Response.json({ profileId, heroVideoUrl: settings[VIDEO_URL_KEY] ?? '', testimonialsEnabled: settings[TESTIMONIALS_ENABLED_KEY] !== 'false', projectName: settings[PROJECT_NAME_KEY] || profile?.name || '', texts });
   } catch (error) {
     console.error('site_settings_get_error', error);
     return Response.json({ heroVideoUrl: '', testimonialsEnabled: true, projectName: '' });
@@ -67,7 +91,7 @@ export async function PUT(request: Request) {
     await getMediaBucket().put(uploadedKey, video.stream(), { httpMetadata: { contentType: video.type } });
     heroVideoUrl = mediaUrl(uploadedKey);
   } else {
-    const body = await request.json() as { heroVideoUrl?: string; testimonialsEnabled?: boolean; projectName?: string };
+    const body = await request.json() as { heroVideoUrl?: string; testimonialsEnabled?: boolean; projectName?: string; texts?: Record<string, string> };
     const updates: Promise<unknown>[] = [];
     if (typeof body.testimonialsEnabled === 'boolean') {
       updates.push(saveProfileSetting(profileId, TESTIMONIALS_ENABLED_KEY, String(body.testimonialsEnabled)));
@@ -77,10 +101,15 @@ export async function PUT(request: Request) {
       updates.push(saveProfileSetting(profileId, PROJECT_NAME_KEY, name));
       if (name) updates.push(getDatabase().prepare('UPDATE project_profiles SET name = ? WHERE id = ?').bind(name, profileId).run());
     }
+    if (body.texts && typeof body.texts === 'object') {
+      for (const key of TEXT_KEYS) {
+        if (typeof body.texts[key] === 'string') updates.push(saveProfileSetting(profileId, `text_${key}`, body.texts[key].trim()));
+      }
+    }
     if (!('heroVideoUrl' in body)) {
       try {
         await Promise.all(updates);
-        return Response.json({ testimonialsEnabled: body.testimonialsEnabled, projectName: typeof body.projectName === 'string' ? body.projectName.trim() : undefined });
+        return Response.json({ testimonialsEnabled: body.testimonialsEnabled, projectName: typeof body.projectName === 'string' ? body.projectName.trim() : undefined, texts: body.texts });
       } catch (error) {
         console.error('site_settings_save_error', error);
         return Response.json({ error: 'No pudimos guardar la configuración. Intenta de nuevo.' }, { status: 503 });
