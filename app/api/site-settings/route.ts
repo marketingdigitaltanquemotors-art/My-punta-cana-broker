@@ -2,6 +2,7 @@ import { getDatabase, getMediaBucket } from '@/db';
 
 const VIDEO_URL_KEY = 'hero_video_url';
 const TESTIMONIALS_ENABLED_KEY = 'testimonials_enabled';
+const PROJECT_NAME_KEY = 'project_name';
 const videoTypes = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
 const MAX_VIDEO_SIZE = 80 * 1024 * 1024;
 const isValidVideoUrl = (value: string) => {
@@ -18,12 +19,12 @@ const mediaUrl = (key: string) => `/api/content/image?key=${encodeURIComponent(k
 
 export async function GET() {
   try {
-    const result = await getDatabase().prepare('SELECT key, value FROM site_settings WHERE key IN (?, ?)').bind(VIDEO_URL_KEY, TESTIMONIALS_ENABLED_KEY).all<{ key: string; value: string }>();
+    const result = await getDatabase().prepare('SELECT key, value FROM site_settings WHERE key IN (?, ?, ?)').bind(VIDEO_URL_KEY, TESTIMONIALS_ENABLED_KEY, PROJECT_NAME_KEY).all<{ key: string; value: string }>();
     const settings = Object.fromEntries((result.results ?? []).map(item => [item.key, item.value]));
-    return Response.json({ heroVideoUrl: settings[VIDEO_URL_KEY] ?? '', testimonialsEnabled: settings[TESTIMONIALS_ENABLED_KEY] !== 'false' });
+    return Response.json({ heroVideoUrl: settings[VIDEO_URL_KEY] ?? '', testimonialsEnabled: settings[TESTIMONIALS_ENABLED_KEY] !== 'false', projectName: settings[PROJECT_NAME_KEY] ?? '' });
   } catch (error) {
     console.error('site_settings_get_error', error);
-    return Response.json({ heroVideoUrl: '', testimonialsEnabled: true });
+    return Response.json({ heroVideoUrl: '', testimonialsEnabled: true, projectName: '' });
   }
 }
 
@@ -41,15 +42,18 @@ export async function PUT(request: Request) {
     await getMediaBucket().put(uploadedKey, video.stream(), { httpMetadata: { contentType: video.type } });
     heroVideoUrl = mediaUrl(uploadedKey);
   } else {
-    const body = await request.json() as { heroVideoUrl?: string; testimonialsEnabled?: boolean };
+    const body = await request.json() as { heroVideoUrl?: string; testimonialsEnabled?: boolean; projectName?: string };
     const updates: Promise<unknown>[] = [];
     if (typeof body.testimonialsEnabled === 'boolean') {
       updates.push(getDatabase().prepare('INSERT INTO site_settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at').bind(TESTIMONIALS_ENABLED_KEY, String(body.testimonialsEnabled), Math.floor(Date.now() / 1000)).run());
     }
+    if (typeof body.projectName === 'string') {
+      updates.push(getDatabase().prepare('INSERT INTO site_settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at').bind(PROJECT_NAME_KEY, body.projectName.trim(), Math.floor(Date.now() / 1000)).run());
+    }
     if (!('heroVideoUrl' in body)) {
       try {
         await Promise.all(updates);
-        return Response.json({ testimonialsEnabled: body.testimonialsEnabled });
+        return Response.json({ testimonialsEnabled: body.testimonialsEnabled, projectName: typeof body.projectName === 'string' ? body.projectName.trim() : undefined });
       } catch (error) {
         console.error('site_settings_save_error', error);
         return Response.json({ error: 'No pudimos guardar la configuración. Intenta de nuevo.' }, { status: 503 });

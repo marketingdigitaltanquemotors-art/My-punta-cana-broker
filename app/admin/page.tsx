@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { ArrowLeft, CalendarCheck, CheckCircle2, Eye, EyeOff, ImagePlus, Loader2, Save, Trash2, Upload, Video } from 'lucide-react';
+import { ArrowLeft, Building2, CalendarCheck, CheckCircle2, Eye, EyeOff, ImagePlus, Loader2, Save, Trash2, Upload, Video } from 'lucide-react';
 
 type ContentType = 'solar' | 'testimonial';
 type ContentItem = { id: number; type: ContentType; title: string; description?: string; image_url: string };
@@ -12,6 +12,7 @@ const labels = { solar: 'Foto de solar', testimonial: 'Testimonio' };
 export default function AdminPage() {
   const [heroVideoUrl, setHeroVideoUrl] = useState('');
   const [savedUrl, setSavedUrl] = useState('');
+  const [projectName, setProjectName] = useState('');
   const [testimonialsEnabled, setTestimonialsEnabled] = useState(true);
   const [items, setItems] = useState<ContentItem[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -30,6 +31,7 @@ export default function AdminPage() {
       const appointmentsData = await appointmentsResponse.json();
       setHeroVideoUrl(settings.heroVideoUrl ?? '');
       setSavedUrl(settings.heroVideoUrl ?? '');
+      setProjectName(settings.projectName ?? '');
       setTestimonialsEnabled(settings.testimonialsEnabled !== false);
       setItems(content.items ?? []);
       setAppointments(appointmentsData.appointments ?? []);
@@ -75,6 +77,24 @@ export default function AdminPage() {
     setSavedUrl('');
     setHeroVideoUrl('');
     setMessage('Video quitado. La portada usará la imagen principal.');
+  }
+
+  async function saveProjectName(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving('project-name');
+    setMessage('');
+    setError('');
+    const form = new FormData(event.currentTarget);
+    const name = String(form.get('projectName') ?? '').trim();
+    const response = await fetch('/api/site-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectName: name }) });
+    const data = await response.json();
+    setSaving('');
+    if (!response.ok) {
+      setError(data.error ?? 'No pudimos guardar el nombre del proyecto.');
+      return;
+    }
+    setProjectName(name);
+    setMessage(name ? 'Nombre del proyecto actualizado en la página principal.' : 'Nombre del proyecto quitado de la página principal.');
   }
 
   async function toggleTestimonials() {
@@ -152,6 +172,13 @@ export default function AdminPage() {
       {error && <div className="admin-error">{error}</div>}
       {message && <div className="admin-success"><CheckCircle2 /> {message}</div>}
       <div className="admin-grid">
+        <form onSubmit={saveProjectName} className="admin-card">
+          <span className="kicker"><Building2 /> PROYECTO</span>
+          <h2>Proyecto o lotificación</h2>
+          <label>Nombre del proyecto<input name="projectName" value={projectName} onChange={event => setProjectName(event.target.value)} placeholder="Ejemplo: Residencial Vista Cana" disabled={loading || saving === 'project-name'} /></label>
+          <p className="admin-help">Este nombre aparecerá en la página principal para identificar el proyecto o la lotificación que estás promocionando.</p>
+          <button className="btn dark admin-save" type="submit" disabled={loading || saving === 'project-name'}>{saving === 'project-name' ? <Loader2 /> : <Save />} GUARDAR NOMBRE</button>
+        </form>
         <form onSubmit={saveVideo} className="admin-card">
           <span className="kicker"><Video /> VIDEO PRINCIPAL</span>
           <label>Subir video desde la PC<input name="heroVideo" type="file" accept="video/mp4,video/webm,video/quicktime" disabled={loading || saving === 'video'} required /></label>
