@@ -3,6 +3,7 @@ import { getDatabase, getMediaBucket } from '@/db';
 const VIDEO_URL_KEY = 'hero_video_url';
 const TESTIMONIALS_ENABLED_KEY = 'testimonials_enabled';
 const PROJECT_NAME_KEY = 'project_name';
+const ACTIVE_PROFILE_KEY = 'active_project_profile_id';
 const videoTypes = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
 const MAX_VIDEO_SIZE = 80 * 1024 * 1024;
 const isValidVideoUrl = (value: string) => {
@@ -17,10 +18,23 @@ const isValidVideoUrl = (value: string) => {
 };
 const mediaUrl = (key: string) => `/api/content/image?key=${encodeURIComponent(key)}`;
 
+async function activeProfileId() {
+  const row = await getDatabase().prepare('SELECT value FROM site_settings WHERE key = ?').bind(ACTIVE_PROFILE_KEY).first<{ value: string }>();
+  return Number(row?.value) || 1;
+}
+
+async function saveProfileSetting(profileId: number, key: string, value: string) {
+  return getDatabase().prepare('INSERT INTO project_profile_settings (profile_id, key, value, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at').bind(profileId, key, value, Math.floor(Date.now() / 1000)).run();
+}
+
 export async function GET() {
   try {
-    const result = await getDatabase().prepare('SELECT key, value FROM site_settings WHERE key IN (?, ?, ?)').bind(VIDEO_URL_KEY, TESTIMONIALS_ENABLED_KEY, PROJECT_NAME_KEY).all<{ key: string; value: string }>();
-    const settings = Object.fromEntries((result.results ?? []).map(item => [item.key, item.value]));
+    const profileId = await activeProfileId();
+    const result = await getDatabase().prepare('SELECT key, value FROM project_profile_settings WHERE profile_id = ? AND key IN (?, ?, ?)').bind(profileId, VIDEO_URL_KEY, TESTIMONIALS_ENABLED_KEY, PROJECT_NAME_KEY).all<{ key: string; value: string }>();
+    const profileSettings = Object.fromEntries((result.results ?? []).map(item => [item.key, item.value]));
+    const legacyResult = await getDatabase().prepare('SELECT key, value FROM site_settings WHERE key IN (?, ?, ?)').bind(VIDEO_URL_KEY, TESTIMONIALS_ENABLED_KEY, PROJECT_NAME_KEY).all<{ key: string; value: string }>();
+    const legacySettings = Object.fromEntries((legacyResult.results ?? []).map(item => [item.key, item.value]));
+    const settings = { ...legacySettings, ...profileSettings };
     return Response.json({ heroVideoUrl: settings[VIDEO_URL_KEY] ?? '', testimonialsEnabled: settings[TESTIMONIALS_ENABLED_KEY] !== 'false', projectName: settings[PROJECT_NAME_KEY] ?? '' });
   } catch (error) {
     console.error('site_settings_get_error', error);
@@ -31,6 +45,7 @@ export async function GET() {
 export async function PUT(request: Request) {
   let heroVideoUrl = '';
   let uploadedKey = '';
+  const profileId = await activeProfileId();
   if (request.headers.get('content-type')?.includes('multipart/form-data')) {
     const form = await request.formData();
     const video = form.get('heroVideo');
@@ -45,10 +60,12 @@ export async function PUT(request: Request) {
     const body = await request.json() as { heroVideoUrl?: string; testimonialsEnabled?: boolean; projectName?: string };
     const updates: Promise<unknown>[] = [];
     if (typeof body.testimonialsEnabled === 'boolean') {
-      updates.push(getDatabase().prepare('INSERT INTO site_settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at').bind(TESTIMONIALS_ENABLED_KEY, String(body.testimonialsEnabled), Math.floor(Date.now() / 1000)).run());
+      updates.push(saveProfileSetting(profileId, TESTIMONIALS_ENABLED_KEY, String(body.testimonialsEnabled)));
     }
     if (typeof body.projectName === 'string') {
-      updates.push(getDatabase().prepare('INSERT INTO site_settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at').bind(PROJECT_NAME_KEY, body.projectName.trim(), Math.floor(Date.now() / 1000)).run());
+      const name = body.projectName.trim();
+      updates.push(saveProfileSetting(profileId, PROJECT_NAME_KEY, name));
+      if (name) updates.push(getDatabase().prepare('UPDATE project_profiles SET name = ? WHERE id = ?').bind(name, profileId).run());
     }
     if (!('heroVideoUrl' in body)) {
       try {
@@ -63,7 +80,7 @@ export async function PUT(request: Request) {
   }
   if (!isValidVideoUrl(heroVideoUrl)) return Response.json({ error: 'Pega una URL válida que comience con http o https.' }, { status: 400 });
   try {
-    await getDatabase().prepare('INSERT INTO site_settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at').bind(VIDEO_URL_KEY, heroVideoUrl, Math.floor(Date.now() / 1000)).run();
+    await saveProfileSetting(profileId, VIDEO_URL_KEY, heroVideoUrl);
     return Response.json({ heroVideoUrl });
   } catch (error) {
     console.error('site_settings_save_error', error);

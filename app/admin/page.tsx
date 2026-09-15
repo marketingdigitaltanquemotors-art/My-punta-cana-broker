@@ -5,6 +5,7 @@ import { ArrowLeft, Building2, CalendarCheck, CheckCircle2, Eye, EyeOff, ImagePl
 type ContentType = 'solar' | 'testimonial';
 type ContentItem = { id: number; type: ContentType; title: string; description?: string; image_url: string };
 type Appointment = { id: number; appointment_date: string; appointment_time: string; client_name: string; phone: string; email: string; reservation_code: string; created_at: number };
+type ProjectProfile = { id: number; name: string; created_at: number };
 
 function Brand() { return <span className="brand"><span className="logo-mark">M</span><span><b>MY PUNTA CANA</b><small>BROKER</small></span></span>; }
 const labels = { solar: 'Foto de solar', testimonial: 'Testimonio' };
@@ -13,6 +14,9 @@ export default function AdminPage() {
   const [heroVideoUrl, setHeroVideoUrl] = useState('');
   const [savedUrl, setSavedUrl] = useState('');
   const [projectName, setProjectName] = useState('');
+  const [profiles, setProfiles] = useState<ProjectProfile[]>([]);
+  const [activeProfileId, setActiveProfileId] = useState(1);
+  const [newProfileName, setNewProfileName] = useState('');
   const [testimonialsEnabled, setTestimonialsEnabled] = useState(true);
   const [items, setItems] = useState<ContentItem[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -25,10 +29,13 @@ export default function AdminPage() {
     setLoading(true);
     setError('');
     try {
-      const [settingsResponse, contentResponse, appointmentsResponse] = await Promise.all([fetch('/api/site-settings', { cache: 'no-store' }), fetch('/api/content', { cache: 'no-store' }), fetch('/api/admin/appointments', { cache: 'no-store' })]);
+      const [profilesResponse, settingsResponse, contentResponse, appointmentsResponse] = await Promise.all([fetch('/api/project-profiles', { cache: 'no-store' }), fetch('/api/site-settings', { cache: 'no-store' }), fetch('/api/content', { cache: 'no-store' }), fetch('/api/admin/appointments', { cache: 'no-store' })]);
+      const profileData = await profilesResponse.json();
       const settings = await settingsResponse.json();
       const content = await contentResponse.json();
       const appointmentsData = await appointmentsResponse.json();
+      setProfiles(profileData.profiles ?? []);
+      setActiveProfileId(profileData.activeProfileId ?? 1);
       setHeroVideoUrl(settings.heroVideoUrl ?? '');
       setSavedUrl(settings.heroVideoUrl ?? '');
       setProjectName(settings.projectName ?? '');
@@ -94,7 +101,43 @@ export default function AdminPage() {
       return;
     }
     setProjectName(name);
+    setProfiles(current => current.map(profile => profile.id === activeProfileId && name ? { ...profile, name } : profile));
     setMessage(name ? 'Nombre del proyecto actualizado en la página principal.' : 'Nombre del proyecto quitado de la página principal.');
+  }
+
+  async function createProfile(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = newProfileName.trim();
+    if (!name) return;
+    setSaving('create-profile');
+    setMessage('');
+    setError('');
+    const response = await fetch('/api/project-profiles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+    const data = await response.json();
+    setSaving('');
+    if (!response.ok) {
+      setError(data.error ?? 'No pudimos crear el perfil.');
+      return;
+    }
+    setNewProfileName('');
+    setMessage('Perfil creado y activado.');
+    await loadAdmin();
+  }
+
+  async function selectProfile(id: number) {
+    if (id === activeProfileId) return;
+    setSaving('select-profile');
+    setMessage('');
+    setError('');
+    const response = await fetch('/api/project-profiles', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ activeProfileId: id }) });
+    const data = await response.json();
+    setSaving('');
+    if (!response.ok) {
+      setError(data.error ?? 'No pudimos activar el perfil.');
+      return;
+    }
+    setMessage('Perfil activado.');
+    await loadAdmin();
   }
 
   async function toggleTestimonials() {
@@ -171,6 +214,16 @@ export default function AdminPage() {
     <section className="admin-shell">
       {error && <div className="admin-error">{error}</div>}
       {message && <div className="admin-success"><CheckCircle2 /> {message}</div>}
+      <section className="admin-list profile-manager">
+        <span className="kicker"><Building2 /> PERFILES DE PROYECTO</span>
+        <h2>Administrar perfiles</h2>
+        <p className="admin-help">Cada perfil guarda su nombre de proyecto, video principal, fotos de solares, testimonios y citas por separado. La página principal muestra el perfil activo.</p>
+        <div className="profile-pills">{profiles.map(profile => <button key={profile.id} type="button" className={profile.id === activeProfileId ? 'active' : ''} onClick={() => selectProfile(profile.id)} disabled={saving === 'select-profile'}>{profile.name}</button>)}</div>
+        <form className="profile-create" onSubmit={createProfile}>
+          <input value={newProfileName} onChange={event => setNewProfileName(event.target.value)} placeholder="Nombre del nuevo proyecto o lotificación" disabled={saving === 'create-profile'} />
+          <button className="btn dark" type="submit" disabled={saving === 'create-profile'}>{saving === 'create-profile' ? <Loader2 /> : <Building2 />} CREAR PERFIL</button>
+        </form>
+      </section>
       <div className="admin-grid">
         <form onSubmit={saveProjectName} className="admin-card">
           <span className="kicker"><Building2 /> PROYECTO</span>

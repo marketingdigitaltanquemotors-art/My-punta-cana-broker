@@ -4,6 +4,7 @@ type ContentType = 'solar' | 'testimonial';
 const allowedTypes = new Set<ContentType>(['solar', 'testimonial']);
 const imageTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 const MAX_IMAGE_SIZE = 8 * 1024 * 1024;
+const ACTIVE_PROFILE_KEY = 'active_project_profile_id';
 
 function cleanText(value: FormDataEntryValue | null) {
   return typeof value === 'string' ? value.trim() : '';
@@ -13,12 +14,18 @@ function publicImageUrl(key: string) {
   return `/api/content/image?key=${encodeURIComponent(key)}`;
 }
 
+async function activeProfileId() {
+  const row = await getDatabase().prepare('SELECT value FROM site_settings WHERE key = ?').bind(ACTIVE_PROFILE_KEY).first<{ value: string }>();
+  return Number(row?.value) || 1;
+}
+
 export async function GET(request: Request) {
   const type = new URL(request.url).searchParams.get('type') as ContentType | null;
   if (type && !allowedTypes.has(type)) return Response.json({ error: 'Tipo de contenido inválido.' }, { status: 400 });
   try {
-    const sql = type ? 'SELECT id, type, title, description, image_url, created_at FROM content_items WHERE type = ? ORDER BY created_at DESC' : 'SELECT id, type, title, description, image_url, created_at FROM content_items ORDER BY created_at DESC';
-    const result = type ? await getDatabase().prepare(sql).bind(type).all() : await getDatabase().prepare(sql).all();
+    const profileId = await activeProfileId();
+    const sql = type ? 'SELECT id, type, title, description, image_url, created_at FROM content_items WHERE profile_id = ? AND type = ? ORDER BY created_at DESC' : 'SELECT id, type, title, description, image_url, created_at FROM content_items WHERE profile_id = ? ORDER BY created_at DESC';
+    const result = type ? await getDatabase().prepare(sql).bind(profileId, type).all() : await getDatabase().prepare(sql).bind(profileId).all();
     return Response.json({ items: result.results ?? [] });
   } catch (error) {
     console.error('content_list_error', error);
@@ -42,9 +49,10 @@ export async function POST(request: Request) {
   const key = `${type}/${Date.now()}-${crypto.randomUUID()}.${extension}`;
   const createdAt = Math.floor(Date.now() / 1000);
   try {
+    const profileId = await activeProfileId();
     await getMediaBucket().put(key, image.stream(), { httpMetadata: { contentType: image.type } });
     const imageUrl = publicImageUrl(key);
-    const result = await getDatabase().prepare('INSERT INTO content_items (type, title, description, image_key, image_url, created_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING id, type, title, description, image_url, created_at').bind(type, title, description, key, imageUrl, createdAt).first();
+    const result = await getDatabase().prepare('INSERT INTO content_items (profile_id, type, title, description, image_key, image_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id, type, title, description, image_url, created_at').bind(profileId, type, title, description, key, imageUrl, createdAt).first();
     return Response.json({ item: result }, { status: 201 });
   } catch (error) {
     console.error('content_create_error', error);
