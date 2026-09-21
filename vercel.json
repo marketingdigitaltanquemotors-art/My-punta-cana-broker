@@ -1,1 +1,22 @@
-
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "echo Proxy deployment ready",
+  "rewrites": [
+    {
+      "source": "/:path*",
+      "destination": "https://my-punta-cana-broker.marketingdigitaltanq.chatgpt.site/:path*"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/:path*",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    }
+  ]
+}
