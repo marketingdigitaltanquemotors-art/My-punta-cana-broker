@@ -70,11 +70,18 @@ export default function AdminPage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
+  function adminFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+    const token = sessionStorage.getItem('mpcb_admin_token');
+    const headers = new Headers(init.headers);
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+    return fetch(input, { ...init, credentials: 'include', headers });
+  }
+
   async function loadAdmin() {
     setLoading(true);
     setError('');
     try {
-      const [profilesResponse, settingsResponse, contentResponse, appointmentsResponse] = await Promise.all([fetch('/api/project-profiles', { cache: 'no-store' }), fetch('/api/site-settings', { cache: 'no-store' }), fetch('/api/content', { cache: 'no-store' }), fetch('/api/admin/appointments', { cache: 'no-store' })]);
+      const [profilesResponse, settingsResponse, contentResponse, appointmentsResponse] = await Promise.all([adminFetch('/api/project-profiles', { cache: 'no-store' }), adminFetch('/api/site-settings', { cache: 'no-store' }), adminFetch('/api/content', { cache: 'no-store' }), adminFetch('/api/admin/appointments', { cache: 'no-store' })]);
       const profileData = await profilesResponse.json();
       const settings = await settingsResponse.json();
       const content = await contentResponse.json();
@@ -95,7 +102,7 @@ export default function AdminPage() {
   }
 
   useEffect(() => {
-    fetch('/api/admin/session', { cache: 'no-store' }).then(async response => {
+    adminFetch('/api/admin/session', { cache: 'no-store' }).then(async response => {
       const data = await response.json();
       setAuthenticated(Boolean(data.authenticated));
       if (data.authenticated) await loadAdmin();
@@ -113,13 +120,15 @@ export default function AdminPage() {
       setLoginError(data.error ?? 'No pudimos iniciar sesión.');
       return;
     }
+    sessionStorage.setItem('mpcb_admin_token', data.token);
     setAuthenticated(true);
     setLoginDetails({ username: '', password: '' });
     await loadAdmin();
   }
 
   async function logout() {
-    await fetch('/api/admin/session', { method: 'DELETE' });
+    await adminFetch('/api/admin/session', { method: 'DELETE' });
+    sessionStorage.removeItem('mpcb_admin_token');
     setAuthenticated(false);
     setProfiles([]);
     setItems([]);
@@ -132,7 +141,7 @@ export default function AdminPage() {
     setMessage('');
     setError('');
     const form = new FormData(event.currentTarget);
-    const response = await fetch('/api/site-settings', { method: 'PUT', body: form });
+    const response = await adminFetch('/api/site-settings', { method: 'PUT', body: form });
     const data = await response.json();
     setSaving('');
     if (!response.ok) {
@@ -149,7 +158,7 @@ export default function AdminPage() {
     setSaving('video');
     setMessage('');
     setError('');
-    const response = await fetch('/api/site-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ heroVideoUrl: '' }) });
+    const response = await adminFetch('/api/site-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ heroVideoUrl: '' }) });
     const data = await response.json();
     setSaving('');
     if (!response.ok) {
@@ -168,7 +177,7 @@ export default function AdminPage() {
     setSaving('create-profile');
     setMessage('');
     setError('');
-    const response = await fetch('/api/project-profiles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+    const response = await adminFetch('/api/project-profiles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
     const data = await response.json();
     setSaving('');
     if (!response.ok) {
@@ -185,7 +194,7 @@ export default function AdminPage() {
     setSaving('select-profile');
     setMessage('');
     setError('');
-    const response = await fetch('/api/project-profiles', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ activeProfileId: id }) });
+    const response = await adminFetch('/api/project-profiles', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ activeProfileId: id }) });
     const data = await response.json();
     setSaving('');
     if (!response.ok) {
@@ -206,7 +215,7 @@ export default function AdminPage() {
     setSaving(`profile-${profile.id}`);
     setMessage('');
     setError('');
-    const response = await fetch(`/api/project-profiles?id=${profile.id}`, { method: 'DELETE' });
+    const response = await adminFetch(`/api/project-profiles?id=${profile.id}`, { method: 'DELETE' });
     const data = await response.json();
     setSaving('');
     if (!response.ok) {
@@ -222,7 +231,7 @@ export default function AdminPage() {
     setSaving('texts');
     setMessage('');
     setError('');
-    const response = await fetch('/api/site-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texts }) });
+    const response = await adminFetch('/api/site-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texts }) });
     const data = await response.json();
     setSaving('');
     if (!response.ok) {
@@ -238,7 +247,7 @@ export default function AdminPage() {
     setSaving('testimonials-toggle');
     setMessage('');
     setError('');
-    const response = await fetch('/api/site-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ testimonialsEnabled: nextValue }) });
+    const response = await adminFetch('/api/site-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ testimonialsEnabled: nextValue }) });
     const data = await response.json();
     setSaving('');
     if (!response.ok) {
@@ -256,7 +265,7 @@ export default function AdminPage() {
     setError('');
     const form = new FormData(event.currentTarget);
     form.set('type', type);
-    const response = await fetch('/api/content', { method: 'POST', body: form });
+    const response = await adminFetch('/api/content', { method: 'POST', body: form });
     const data = await response.json();
     setSaving('');
     if (!response.ok) {
@@ -272,7 +281,7 @@ export default function AdminPage() {
     setSaving(`delete-${id}`);
     setMessage('');
     setError('');
-    const response = await fetch(`/api/content?id=${id}`, { method: 'DELETE' });
+    const response = await adminFetch(`/api/content?id=${id}`, { method: 'DELETE' });
     const data = await response.json();
     setSaving('');
     if (!response.ok) {
@@ -287,7 +296,7 @@ export default function AdminPage() {
     setSaving(`appointment-${id}`);
     setMessage('');
     setError('');
-    const response = await fetch(`/api/admin/appointments?id=${id}`, { method: 'DELETE' });
+    const response = await adminFetch(`/api/admin/appointments?id=${id}`, { method: 'DELETE' });
     const data = await response.json();
     setSaving('');
     if (!response.ok) {
