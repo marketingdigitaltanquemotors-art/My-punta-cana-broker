@@ -5,13 +5,13 @@
   "outputDirectory": "public",
   "rewrites": [
     {
-      "source": "/:path*",
-      "destination": "https://my-punta-cana-broker.marketingdigitaltanq.chatgpt.site/:path*"
+      "source": "/(.*)",
+      "destination": "https://my-punta-cana-broker.marketingdigitaltanq.chatgpt.site/$1"
     }
   ],
   "headers": [
     {
-      "source": "/:path*",
+      "source": "/(.*)",
       "headers": [
         {
           "key": "x-vercel-enable-rewrite-caching",
