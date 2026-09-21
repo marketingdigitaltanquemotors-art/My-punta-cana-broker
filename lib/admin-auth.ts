@@ -9,7 +9,13 @@ function readCookie(request: Request, name: string) {
 }
 
 export function isAdminAuthenticated(request: Request) {
-  return readCookie(request, COOKIE_NAME) === SESSION_VALUE;
+  const authorization = request.headers.get('authorization') ?? '';
+  const bearerToken = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
+  return readCookie(request, COOKIE_NAME) === SESSION_VALUE || bearerToken === SESSION_VALUE;
+}
+
+export function adminSessionToken() {
+  return SESSION_VALUE;
 }
 
 export function requireAdmin(request: Request) {
