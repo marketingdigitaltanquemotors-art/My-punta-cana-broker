@@ -1,4 +1,4 @@
-import { adminSessionCookie, adminSessionToken, clearAdminSessionCookie, isAdminAuthenticated, validAdminCredentials } from '@/lib/admin-auth';
+import { adminSessionCookie, adminSessionToken, clearAdminSessionCookie, isAdminAuthenticated, validAdminCredentials, validAdminRecoveryCode } from '@/lib/admin-auth';
 
 const sessionHeaders = { 'Cache-Control': 'private, no-store', Vary: 'Cookie, Authorization' };
 
@@ -7,9 +7,11 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => ({})) as { username?: string; password?: string };
-  if (!validAdminCredentials(body.username?.trim() ?? '', body.password ?? '')) {
-    return Response.json({ error: 'Usuario o contraseña incorrectos.' }, { status: 401 });
+  const body = await request.json().catch(() => ({})) as { username?: string; password?: string; recoveryCode?: string };
+  const recovered = typeof body.recoveryCode === 'string' && validAdminRecoveryCode(body.recoveryCode.trim());
+  const signedIn = validAdminCredentials(body.username?.trim() ?? '', body.password ?? '');
+  if (!recovered && !signedIn) {
+    return Response.json({ error: body.recoveryCode ? 'Código de recuperación incorrecto.' : 'Usuario o contraseña incorrectos.' }, { status: 401 });
   }
   return Response.json({ authenticated: true, token: adminSessionToken() }, { headers: { ...sessionHeaders, 'Set-Cookie': adminSessionCookie() } });
 }

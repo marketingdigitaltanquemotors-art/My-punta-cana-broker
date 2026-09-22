@@ -2,6 +2,7 @@ const COOKIE_NAME = 'mpcb_admin_session';
 const SESSION_VALUE = 'mpcb-admin-authenticated-v1';
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME ?? 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? 'mypuntacana2026';
+const ADMIN_RECOVERY_CODE = process.env.ADMIN_RECOVERY_CODE ?? '';
 
 function readCookie(request: Request, name: string) {
   const cookie = request.headers.get('cookie') ?? '';
@@ -25,6 +26,10 @@ export function requireAdmin(request: Request) {
 
 export function validAdminCredentials(username: string, password: string) {
   return username === ADMIN_USERNAME && password === ADMIN_PASSWORD;
+}
+
+export function validAdminRecoveryCode(recoveryCode: string) {
+  return Boolean(ADMIN_RECOVERY_CODE) && recoveryCode === ADMIN_RECOVERY_CODE;
 }
 
 export function adminSessionCookie() {

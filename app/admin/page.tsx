@@ -56,6 +56,8 @@ export default function AdminPage() {
   const [checkingSession, setCheckingSession] = useState(true);
   const [loginDetails, setLoginDetails] = useState({ username: '', password: '' });
   const [loginError, setLoginError] = useState('');
+  const [showRecovery, setShowRecovery] = useState(false);
+  const [recoveryCode, setRecoveryCode] = useState('');
   const [heroVideoUrl, setHeroVideoUrl] = useState('');
   const [savedUrl, setSavedUrl] = useState('');
   const [profiles, setProfiles] = useState<ProjectProfile[]>([]);
@@ -123,6 +125,23 @@ export default function AdminPage() {
     sessionStorage.setItem('mpcb_admin_token', data.token);
     setAuthenticated(true);
     setLoginDetails({ username: '', password: '' });
+    await loadAdmin();
+  }
+
+  async function recoverAccess(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving('recovery');
+    setLoginError('');
+    const response = await fetch('/api/admin/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recoveryCode }) });
+    const data = await response.json();
+    setSaving('');
+    if (!response.ok) {
+      setLoginError(data.error ?? 'No pudimos recuperar el acceso.');
+      return;
+    }
+    sessionStorage.setItem('mpcb_admin_token', data.token);
+    setAuthenticated(true);
+    setRecoveryCode('');
     await loadAdmin();
   }
 
@@ -328,8 +347,16 @@ export default function AdminPage() {
         <label>Usuario<input value={loginDetails.username} onChange={event => setLoginDetails(current => ({ ...current, username: event.target.value }))} autoComplete="username" required /></label>
         <label>Contraseña<input type="password" value={loginDetails.password} onChange={event => setLoginDetails(current => ({ ...current, password: event.target.value }))} autoComplete="current-password" required /></label>
         <button className="btn dark admin-save" type="submit" disabled={saving === 'login'}>{saving === 'login' ? <Loader2 /> : <LockKeyhole />} ENTRAR AL PANEL</button>
-        <a className="forgot-password" href="https://wa.me/18097479704?text=Hola%2C%20necesito%20recuperar%20el%20acceso%20al%20panel%20administrativo%20de%20My%20Punta%20Cana%20Broker." target="_blank" rel="noreferrer">¿Olvidaste tu contraseña? <span>Recuperar por WhatsApp</span></a>
+        <button className="forgot-password" type="button" onClick={() => { setShowRecovery(value => !value); setLoginError(''); }}>¿Olvidaste tu contraseña? <span>Recuperar acceso</span></button>
       </form>
+      {showRecovery && <form className="login-card recovery-card" onSubmit={recoverAccess}>
+        <span className="kicker"><LockKeyhole /> RECUPERAR ACCESO</span>
+        <h2>Usa tu código de recuperación</h2>
+        <p>Escribe el código privado para entrar al panel sin usar la contraseña.</p>
+        {loginError && <div className="admin-error">{loginError}</div>}
+        <label>Código de recuperación<input type="password" inputMode="numeric" value={recoveryCode} onChange={event => setRecoveryCode(event.target.value)} autoComplete="one-time-code" required /></label>
+        <button className="btn dark admin-save" type="submit" disabled={saving === 'recovery'}>{saving === 'recovery' ? <Loader2 /> : <LockKeyhole />} RECUPERAR Y ENTRAR</button>
+      </form>}
     </section>
   </main>;
 
