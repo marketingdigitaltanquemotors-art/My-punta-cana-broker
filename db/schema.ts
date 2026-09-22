@@ -23,3 +23,8 @@ export const projectProfileSettingsSchema = {
   table: 'project_profile_settings',
   columns: ['profile_id', 'key', 'value', 'updated_at'],
 } as const;
+
+export const adminCredentialsSchema = {
+  table: 'admin_credentials',
+  columns: ['id', 'username', 'password_hash', 'password_salt', 'updated_at'],
+} as const;
