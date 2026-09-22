@@ -328,6 +328,7 @@ export default function AdminPage() {
         <label>Usuario<input value={loginDetails.username} onChange={event => setLoginDetails(current => ({ ...current, username: event.target.value }))} autoComplete="username" required /></label>
         <label>Contraseña<input type="password" value={loginDetails.password} onChange={event => setLoginDetails(current => ({ ...current, password: event.target.value }))} autoComplete="current-password" required /></label>
         <button className="btn dark admin-save" type="submit" disabled={saving === 'login'}>{saving === 'login' ? <Loader2 /> : <LockKeyhole />} ENTRAR AL PANEL</button>
+        <a className="forgot-password" href="mailto:marketingdigitaltanquemotors@gmail.com?subject=Recuperar%20acceso%20al%20panel%20administrativo">¿Olvidaste tu contraseña? <span>Recuperar cuenta</span></a>
       </form>
     </section>
   </main>;
