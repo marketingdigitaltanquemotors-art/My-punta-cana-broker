@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, CalendarDays, Home as HomeIcon, ImageIcon, Mail,
 import { ViewportVideo } from '@/components/viewport-video';
 function Brand() { return <span className="brand"><span className="logo-mark">M</span><span><b>MY PUNTA CANA</b><small>BROKER</small></span></span>; }
 type ContentItem = { id: number; type: 'solar' | 'testimonial'; title: string; description?: string; image_url: string };
+type SiteSettingsResponse = { heroVideoUrl?: string; testimonialsEnabled?: boolean; projectName?: string; texts?: Partial<typeof defaultTexts> };
 const defaultTexts = {
   heroEyebrow: 'PUNTA CANA · BÁVARO',
   heroTitle: 'Encuentra tu solar en el centro de Punta Cana-Bávaro, cerca de todo.',
@@ -38,7 +39,7 @@ export default function Home() {
   useEffect(() => {
     fetch('/api/site-settings', { cache: 'no-store' }).then(async response => {
       if (response.ok) {
-        const data = await response.json();
+        const data = await response.json() as SiteSettingsResponse;
         setHeroVideoUrl(data.heroVideoUrl ?? '');
         setTestimonialsEnabled(data.testimonialsEnabled !== false);
         setProjectName(data.projectName ?? '');

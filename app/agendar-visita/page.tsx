@@ -16,6 +16,7 @@ const dateKey = (date: Date) => format(date, 'yyyy-MM-dd');
 const puntaCanaNow = (date: Date) => { const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santo_Domingo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(date); const value = Object.fromEntries(parts.map(part => [part.type, part.value])); return { date: `${value.year}-${value.month}-${value.day}`, time: `${value.hour}:${value.minute}` }; };
 
 type Confirmation = { date: string; time: string; name: string; code: string };
+type AppointmentResponse = { error?: string; bookedTimes?: string[]; appointment?: Confirmation };
 
 export default function ScheduleVisit() {
   const today = useMemo(() => { const value = new Date(); value.setHours(0,0,0,0); return value; }, []);
@@ -38,7 +39,7 @@ export default function ScheduleVisit() {
   useEffect(() => { setNow(new Date()); const timer = window.setInterval(() => setNow(new Date()), 30000); return () => window.clearInterval(timer); }, []);
   useEffect(() => {
     const controller = new AbortController(); setLoading(true); setTime(''); setError('');
-    fetch(`/api/appointments?date=${dateKey(date)}${profileQuery}`, { signal: controller.signal }).then(async response => { const data = await response.json(); if (!response.ok) throw new Error(data.error); setBookedTimes(data.bookedTimes); }).catch(err => { if (err.name !== 'AbortError') setError(err.message || 'No pudimos consultar los horarios.'); }).finally(() => setLoading(false));
+    fetch(`/api/appointments?date=${dateKey(date)}${profileQuery}`, { signal: controller.signal }).then(async response => { const data = await response.json() as AppointmentResponse; if (!response.ok) throw new Error(data.error); setBookedTimes(data.bookedTimes ?? []); }).catch(err => { if (err.name !== 'AbortError') setError(err.message || 'No pudimos consultar los horarios.'); }).finally(() => setLoading(false));
     return () => controller.abort();
   }, [date, profileQuery]);
 
@@ -46,9 +47,9 @@ export default function ScheduleVisit() {
     event.preventDefault(); if (!time) { setError('Selecciona un horario disponible.'); return; }
     setSubmitting(true); setError('');
     const response = await fetch('/api/appointments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: dateKey(date), time, profileId, ...details }) });
-    const data = await response.json();
-    if (!response.ok) { setError(data.error); if (response.status === 409) setBookedTimes(current => [...new Set([...current, time])]); setTime(''); setSubmitting(false); return; }
-    setConfirmation(data.appointment); setSubmitting(false);
+    const data = await response.json() as AppointmentResponse;
+    if (!response.ok) { setError(data.error ?? 'No pudimos confirmar la cita.'); if (response.status === 409) setBookedTimes(current => [...new Set([...current, time])]); setTime(''); setSubmitting(false); return; }
+    setConfirmation(data.appointment ?? null); setSubmitting(false);
   }
 
   return <main className="schedule-page">
