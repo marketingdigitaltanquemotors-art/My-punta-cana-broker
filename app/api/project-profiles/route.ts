@@ -1,16 +1,20 @@
 import { getDatabase } from '@/db';
 import { getMediaBucket } from '@/db';
 import { requireAdmin } from '@/lib/admin-auth';
+import { invalidateMemoryCache, SHORT_CACHE_TTL, withMemoryCache } from '@/lib/memory-cache';
 
 const ACTIVE_PROFILE_KEY = 'active_project_profile_id';
 
 async function activeProfileId() {
-  const row = await getDatabase().prepare('SELECT value FROM site_settings WHERE key = ?').bind(ACTIVE_PROFILE_KEY).first<{ value: string }>();
-  return Number(row?.value) || 1;
+  return withMemoryCache('config:active-profile', SHORT_CACHE_TTL, async () => {
+    const row = await getDatabase().prepare('SELECT value FROM site_settings WHERE key = ?').bind(ACTIVE_PROFILE_KEY).first<{ value: string }>();
+    return Number(row?.value) || 1;
+  });
 }
 
 async function setActiveProfile(id: number) {
   await getDatabase().prepare('INSERT INTO site_settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at').bind(ACTIVE_PROFILE_KEY, String(id), Math.floor(Date.now() / 1000)).run();
+  invalidateMemoryCache('config:active-profile', 'projects:');
 }
 
 async function ensureDefaultProfile() {
@@ -28,8 +32,10 @@ export async function GET(request: Request) {
   if (unauthorized) return unauthorized;
   try {
     await ensureDefaultProfile();
-    const result = await getDatabase().prepare('SELECT id, name, created_at FROM project_profiles ORDER BY id ASC').all<{ id: number; name: string; created_at: number }>();
-    const profiles = result.results ?? [];
+    const profiles = await withMemoryCache('projects:list', SHORT_CACHE_TTL, async () => {
+      const result = await getDatabase().prepare('SELECT id, name, created_at FROM project_profiles ORDER BY id ASC').all<{ id: number; name: string; created_at: number }>();
+      return result.results ?? [];
+    });
     let activeId = await activeProfileId();
     if (!profiles.some(profile => profile.id === activeId)) {
       activeId = profiles[0]?.id ?? 1;
@@ -56,6 +62,7 @@ export async function POST(request: Request) {
       getDatabase().prepare('INSERT INTO project_profile_settings (profile_id, key, value, updated_at) VALUES (?, ?, ?, ?)').bind(profile.id, 'testimonials_enabled', 'true', Math.floor(Date.now() / 1000)),
     ]);
     await setActiveProfile(profile.id);
+    invalidateMemoryCache('projects:', 'config:', 'media:');
     return Response.json({ profile, activeProfileId: profile.id }, { status: 201 });
   } catch (error) {
     console.error('project_profiles_create_error', error);
@@ -77,6 +84,7 @@ export async function PUT(request: Request) {
       statements.push(getDatabase().prepare('UPDATE project_profiles SET name = ? WHERE id = ?').bind(body.name.trim(), id));
     }
     await getDatabase().batch(statements);
+    invalidateMemoryCache('projects:', 'config:', 'media:');
     return Response.json({ activeProfileId: id });
   } catch (error) {
     console.error('project_profiles_update_error', error);
@@ -101,20 +109,22 @@ export async function DELETE(request: Request) {
     if (!profileIds.some(profile => profile.id === id)) return Response.json({ error: 'Ese perfil no existe.' }, { status: 404 });
     if (profileIds.length <= 1) return Response.json({ error: 'Debes dejar al menos un perfil.' }, { status: 400 });
 
-    const content = await getDatabase().prepare('SELECT image_key FROM content_items WHERE profile_id = ?').bind(id).all<{ image_key: string }>();
+    const content = await getDatabase().prepare('SELECT COALESCE(media_key, image_key) AS media_key FROM content_items WHERE profile_id = ?').bind(id).all<{ media_key: string }>();
     const settings = await getDatabase().prepare('SELECT value FROM project_profile_settings WHERE profile_id = ? AND key = ?').bind(id, 'hero_video_url').all<{ value: string }>();
     const mediaKeys = [
-      ...(content.results ?? []).map(item => item.image_key),
+      ...(content.results ?? []).map(item => item.media_key),
       ...(settings.results ?? []).map(item => keyFromMediaUrl(item.value)).filter(Boolean)
     ];
 
     await getDatabase().batch([
       getDatabase().prepare('DELETE FROM appointments WHERE profile_id = ?').bind(id),
       getDatabase().prepare('DELETE FROM content_items WHERE profile_id = ?').bind(id),
+      getDatabase().prepare('DELETE FROM media_items WHERE profile_id = ?').bind(id),
       getDatabase().prepare('DELETE FROM project_profile_settings WHERE profile_id = ?').bind(id),
       getDatabase().prepare('DELETE FROM project_profiles WHERE id = ?').bind(id)
     ]);
     await Promise.all(mediaKeys.map(key => getMediaBucket().delete(key).catch(() => {})));
+    invalidateMemoryCache('projects:', 'config:', 'media:', 'media-url:');
 
     let activeId = await activeProfileId();
     if (activeId === id) {

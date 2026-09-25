@@ -1,5 +1,6 @@
 import { getDatabase, getMediaBucket } from '@/db';
 import { requireAdmin } from '@/lib/admin-auth';
+import { cachedMediaUrl, invalidateMemoryCache, SHORT_CACHE_TTL, withMemoryCache } from '@/lib/memory-cache';
 
 const VIDEO_URL_KEY = 'hero_video_url';
 const TESTIMONIALS_ENABLED_KEY = 'testimonials_enabled';
@@ -38,11 +39,11 @@ const isValidVideoUrl = (value: string) => {
     return false;
   }
 };
-const mediaUrl = (key: string) => `/api/content/image?key=${encodeURIComponent(key)}`;
-
 async function activeProfileId() {
-  const row = await getDatabase().prepare('SELECT value FROM site_settings WHERE key = ?').bind(ACTIVE_PROFILE_KEY).first<{ value: string }>();
-  return Number(row?.value) || 1;
+  return withMemoryCache('config:active-profile', SHORT_CACHE_TTL, async () => {
+    const row = await getDatabase().prepare('SELECT value FROM site_settings WHERE key = ?').bind(ACTIVE_PROFILE_KEY).first<{ value: string }>();
+    return Number(row?.value) || 1;
+  });
 }
 
 async function profileIdFromRequest(request: Request) {
@@ -61,16 +62,19 @@ async function saveProfileSetting(profileId: number, key: string, value: string)
 export async function GET(request: Request) {
   try {
     const profileId = await profileIdFromRequest(request);
-    const wantedKeys = [VIDEO_URL_KEY, TESTIMONIALS_ENABLED_KEY, PROJECT_NAME_KEY, ...TEXT_KEYS.map(key => `text_${key}`)];
-    const placeholders = wantedKeys.map(() => '?').join(',');
-    const result = await getDatabase().prepare(`SELECT key, value FROM project_profile_settings WHERE profile_id = ? AND key IN (${placeholders})`).bind(profileId, ...wantedKeys).all<{ key: string; value: string }>();
-    const profile = await getDatabase().prepare('SELECT name FROM project_profiles WHERE id = ?').bind(profileId).first<{ name: string }>();
-    const profileSettings = Object.fromEntries((result.results ?? []).map(item => [item.key, item.value]));
-    const legacyResult = await getDatabase().prepare('SELECT key, value FROM site_settings WHERE key IN (?, ?, ?)').bind(VIDEO_URL_KEY, TESTIMONIALS_ENABLED_KEY, PROJECT_NAME_KEY).all<{ key: string; value: string }>();
-    const legacySettings = Object.fromEntries((legacyResult.results ?? []).map(item => [item.key, item.value]));
-    const settings = { ...legacySettings, ...profileSettings };
-    const texts = Object.fromEntries(Object.entries(TEXT_DEFAULTS).map(([key, value]) => [key, settings[`text_${key}`] ?? value]));
-    return Response.json({ profileId, heroVideoUrl: settings[VIDEO_URL_KEY] ?? '', testimonialsEnabled: settings[TESTIMONIALS_ENABLED_KEY] !== 'false', projectName: settings[PROJECT_NAME_KEY] || profile?.name || '', texts });
+    const settingsPayload = await withMemoryCache(`config:profile:${profileId}`, SHORT_CACHE_TTL, async () => {
+      const wantedKeys = [VIDEO_URL_KEY, TESTIMONIALS_ENABLED_KEY, PROJECT_NAME_KEY, ...TEXT_KEYS.map(key => `text_${key}`)];
+      const placeholders = wantedKeys.map(() => '?').join(',');
+      const result = await getDatabase().prepare(`SELECT key, value FROM project_profile_settings WHERE profile_id = ? AND key IN (${placeholders})`).bind(profileId, ...wantedKeys).all<{ key: string; value: string }>();
+      const profile = await getDatabase().prepare('SELECT name FROM project_profiles WHERE id = ?').bind(profileId).first<{ name: string }>();
+      const profileSettings = Object.fromEntries((result.results ?? []).map(item => [item.key, item.value]));
+      const legacyResult = await getDatabase().prepare('SELECT key, value FROM site_settings WHERE key IN (?, ?, ?)').bind(VIDEO_URL_KEY, TESTIMONIALS_ENABLED_KEY, PROJECT_NAME_KEY).all<{ key: string; value: string }>();
+      const legacySettings = Object.fromEntries((legacyResult.results ?? []).map(item => [item.key, item.value]));
+      const settings = { ...legacySettings, ...profileSettings };
+      const texts = Object.fromEntries(Object.entries(TEXT_DEFAULTS).map(([key, value]) => [key, settings[`text_${key}`] ?? value]));
+      return { profileId, heroVideoUrl: settings[VIDEO_URL_KEY] ?? '', testimonialsEnabled: settings[TESTIMONIALS_ENABLED_KEY] !== 'false', projectName: settings[PROJECT_NAME_KEY] || profile?.name || '', texts };
+    });
+    return Response.json(settingsPayload);
   } catch (error) {
     console.error('site_settings_get_error', error);
     return Response.json({ heroVideoUrl: '', testimonialsEnabled: true, projectName: '' });
@@ -91,8 +95,16 @@ export async function PUT(request: Request) {
     if (video.size > MAX_VIDEO_SIZE) return Response.json({ error: 'El video no puede pesar más de 80 MB.' }, { status: 400 });
     const extension = video.type === 'video/quicktime' ? 'mov' : video.type.split('/')[1] ?? 'mp4';
     uploadedKey = `hero-video/${Date.now()}-${crypto.randomUUID()}.${extension}`;
-    await getMediaBucket().put(uploadedKey, video.stream(), { httpMetadata: { contentType: video.type } });
-    heroVideoUrl = mediaUrl(uploadedKey);
+    try {
+      await getMediaBucket().put(uploadedKey, video.stream(), { httpMetadata: { contentType: video.type, cacheControl: 'public, max-age=31536000, immutable' } });
+      await getDatabase().prepare('INSERT INTO media_items (key, profile_id, kind, filename, content_type, size, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(uploadedKey, profileId, 'hero-video', video.name, video.type, video.size, 0).run();
+      heroVideoUrl = cachedMediaUrl(uploadedKey);
+    } catch (error) {
+      console.error('hero_video_upload_error', error);
+      await getDatabase().prepare('DELETE FROM media_items WHERE key = ?').bind(uploadedKey).run().catch(() => {});
+      await getMediaBucket().delete(uploadedKey).catch(() => {});
+      return Response.json({ error: 'No pudimos subir el video. Intenta de nuevo.' }, { status: 503 });
+    }
   } else {
     const body = await request.json() as { heroVideoUrl?: string; testimonialsEnabled?: boolean; projectName?: string; texts?: Record<string, string> };
     const updates: Promise<unknown>[] = [];
@@ -112,6 +124,7 @@ export async function PUT(request: Request) {
     if (!('heroVideoUrl' in body)) {
       try {
         await Promise.all(updates);
+        invalidateMemoryCache(`config:profile:${profileId}`, 'projects:');
         return Response.json({ testimonialsEnabled: body.testimonialsEnabled, projectName: typeof body.projectName === 'string' ? body.projectName.trim() : undefined, texts: body.texts });
       } catch (error) {
         console.error('site_settings_save_error', error);
@@ -123,10 +136,14 @@ export async function PUT(request: Request) {
   if (!isValidVideoUrl(heroVideoUrl)) return Response.json({ error: 'Pega una URL válida que comience con http o https.' }, { status: 400 });
   try {
     await saveProfileSetting(profileId, VIDEO_URL_KEY, heroVideoUrl);
+    invalidateMemoryCache(`config:profile:${profileId}`, 'media:list:');
     return Response.json({ heroVideoUrl });
   } catch (error) {
     console.error('site_settings_save_error', error);
-    if (uploadedKey) await getMediaBucket().delete(uploadedKey).catch(() => {});
+    if (uploadedKey) {
+      await getDatabase().prepare('DELETE FROM media_items WHERE key = ?').bind(uploadedKey).run().catch(() => {});
+      await getMediaBucket().delete(uploadedKey).catch(() => {});
+    }
     return Response.json({ error: 'No pudimos guardar el video. Intenta de nuevo.' }, { status: 503 });
   }
 }

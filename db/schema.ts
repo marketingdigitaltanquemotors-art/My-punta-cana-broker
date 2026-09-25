@@ -11,7 +11,12 @@ export const siteSettingsSchema = {
 
 export const contentItemsSchema = {
   table: 'content_items',
-  columns: ['id', 'profile_id', 'type', 'title', 'description', 'image_key', 'image_url', 'created_at'],
+  columns: ['id', 'profile_id', 'type', 'title', 'description', 'image_key', 'image_url', 'media_key', 'created_at'],
+} as const;
+
+export const mediaItemsSchema = {
+  table: 'media_items',
+  columns: ['key', 'profile_id', 'kind', 'filename', 'content_type', 'size', 'sort_order'],
 } as const;
 
 export const projectProfilesSchema = {

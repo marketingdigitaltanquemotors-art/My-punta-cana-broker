@@ -1,5 +1,6 @@
 import { getDatabase, getMediaBucket } from '@/db';
 import { requireAdmin } from '@/lib/admin-auth';
+import { cachedMediaUrl, invalidateMemoryCache, SHORT_CACHE_TTL, withMemoryCache } from '@/lib/memory-cache';
 
 type ContentType = 'solar' | 'testimonial';
 const allowedTypes = new Set<ContentType>(['solar', 'testimonial']);
@@ -11,13 +12,11 @@ function cleanText(value: FormDataEntryValue | null) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function publicImageUrl(key: string) {
-  return `/api/content/image?key=${encodeURIComponent(key)}`;
-}
-
 async function activeProfileId() {
-  const row = await getDatabase().prepare('SELECT value FROM site_settings WHERE key = ?').bind(ACTIVE_PROFILE_KEY).first<{ value: string }>();
-  return Number(row?.value) || 1;
+  return withMemoryCache('config:active-profile', SHORT_CACHE_TTL, async () => {
+    const row = await getDatabase().prepare('SELECT value FROM site_settings WHERE key = ?').bind(ACTIVE_PROFILE_KEY).first<{ value: string }>();
+    return Number(row?.value) || 1;
+  });
 }
 
 async function profileIdFromRequest(request: Request) {
@@ -34,9 +33,19 @@ export async function GET(request: Request) {
   if (type && !allowedTypes.has(type)) return Response.json({ error: 'Tipo de contenido inválido.' }, { status: 400 });
   try {
     const profileId = await profileIdFromRequest(request);
-    const sql = type ? 'SELECT id, type, title, description, image_url, created_at FROM content_items WHERE profile_id = ? AND type = ? ORDER BY created_at DESC' : 'SELECT id, type, title, description, image_url, created_at FROM content_items WHERE profile_id = ? ORDER BY created_at DESC';
-    const result = type ? await getDatabase().prepare(sql).bind(profileId, type).all() : await getDatabase().prepare(sql).bind(profileId).all();
-    return Response.json({ items: result.results ?? [] });
+    const items = await withMemoryCache(`media:list:${profileId}:${type ?? 'all'}`, SHORT_CACHE_TTL, async () => {
+      const sql = type
+        ? 'SELECT c.id, c.type, c.title, c.description, COALESCE(m.key, c.media_key, c.image_key) AS media_key, c.image_url, c.created_at FROM content_items c LEFT JOIN media_items m ON m.key = COALESCE(c.media_key, c.image_key) WHERE c.profile_id = ? AND c.type = ? ORDER BY c.created_at DESC'
+        : 'SELECT c.id, c.type, c.title, c.description, COALESCE(m.key, c.media_key, c.image_key) AS media_key, c.image_url, c.created_at FROM content_items c LEFT JOIN media_items m ON m.key = COALESCE(c.media_key, c.image_key) WHERE c.profile_id = ? ORDER BY c.created_at DESC';
+      const result = type
+        ? await getDatabase().prepare(sql).bind(profileId, type).all<{ id: number; type: ContentType; title: string; description: string; media_key: string; image_url: string; created_at: number }>()
+        : await getDatabase().prepare(sql).bind(profileId).all<{ id: number; type: ContentType; title: string; description: string; media_key: string; image_url: string; created_at: number }>();
+      return (result.results ?? []).map(({ media_key, image_url, ...item }) => ({
+        ...item,
+        image_url: media_key ? cachedMediaUrl(media_key) : image_url,
+      }));
+    });
+    return Response.json({ items });
   } catch (error) {
     console.error('content_list_error', error);
     return Response.json({ error: 'No pudimos cargar el contenido.' }, { status: 503 });
@@ -62,12 +71,16 @@ export async function POST(request: Request) {
   const createdAt = Math.floor(Date.now() / 1000);
   try {
     const profileId = await activeProfileId();
-    await getMediaBucket().put(key, image.stream(), { httpMetadata: { contentType: image.type } });
-    const imageUrl = publicImageUrl(key);
-    const result = await getDatabase().prepare('INSERT INTO content_items (profile_id, type, title, description, image_key, image_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id, type, title, description, image_url, created_at').bind(profileId, type, title, description, key, imageUrl, createdAt).first();
+    const order = await getDatabase().prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM media_items WHERE profile_id = ? AND kind = ?').bind(profileId, type).first<{ next_order: number }>();
+    await getMediaBucket().put(key, image.stream(), { httpMetadata: { contentType: image.type, cacheControl: 'public, max-age=31536000, immutable' } });
+    const imageUrl = cachedMediaUrl(key);
+    await getDatabase().prepare('INSERT INTO media_items (key, profile_id, kind, filename, content_type, size, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(key, profileId, type, image.name, image.type, image.size, order?.next_order ?? 0).run();
+    const result = await getDatabase().prepare('INSERT INTO content_items (profile_id, type, title, description, image_key, image_url, media_key, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, type, title, description, image_url, created_at').bind(profileId, type, title, description, key, imageUrl, key, createdAt).first();
+    invalidateMemoryCache('media:list:', 'media-url:');
     return Response.json({ item: result }, { status: 201 });
   } catch (error) {
     console.error('content_create_error', error);
+    await getDatabase().prepare('DELETE FROM media_items WHERE key = ?').bind(key).run().catch(() => {});
     await getMediaBucket().delete(key).catch(() => {});
     return Response.json({ error: 'No pudimos subir el contenido. Intenta de nuevo.' }, { status: 503 });
   }
@@ -79,10 +92,14 @@ export async function DELETE(request: Request) {
   const id = Number(new URL(request.url).searchParams.get('id'));
   if (!Number.isInteger(id) || id < 1) return Response.json({ error: 'Contenido inválido.' }, { status: 400 });
   try {
-    const item = await getDatabase().prepare('SELECT image_key FROM content_items WHERE id = ?').bind(id).first<{ image_key: string }>();
+    const item = await getDatabase().prepare('SELECT COALESCE(media_key, image_key) AS media_key FROM content_items WHERE id = ?').bind(id).first<{ media_key: string }>();
     if (!item) return Response.json({ error: 'Ese contenido no existe.' }, { status: 404 });
-    await getDatabase().prepare('DELETE FROM content_items WHERE id = ?').bind(id).run();
-    await getMediaBucket().delete(item.image_key);
+    await getDatabase().batch([
+      getDatabase().prepare('DELETE FROM content_items WHERE id = ?').bind(id),
+      getDatabase().prepare('DELETE FROM media_items WHERE key = ?').bind(item.media_key),
+    ]);
+    await getMediaBucket().delete(item.media_key);
+    invalidateMemoryCache('media:list:', `media-url:${item.media_key}`);
     return Response.json({ ok: true });
   } catch (error) {
     console.error('content_delete_error', error);

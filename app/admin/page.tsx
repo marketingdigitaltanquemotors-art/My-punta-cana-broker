@@ -408,7 +408,7 @@ export default function AdminPage() {
           <p className="admin-help">Acepta MP4, WebM o MOV de hasta 80 MB. Al guardarlo, la portada usará ese video automáticamente.</p>
           <button className="btn dark admin-save" type="submit" disabled={loading || saving === 'video'}>{saving === 'video' ? <Loader2 /> : <Save />} SUBIR VIDEO</button>
           <button className="remove-video" type="button" onClick={removeVideo} disabled={loading || saving === 'video' || !heroVideoUrl}>QUITAR VIDEO</button>
-          <div className="video-preview compact">{loading ? <Loader2 className="preview-loader" /> : savedUrl ? <video src={savedUrl} controls poster="/hero-solar-v1.png" /> : <img src="/hero-solar-v1.png" alt="Vista previa de la portada" />}</div>
+          <div className="video-preview compact">{loading ? <Loader2 className="preview-loader" /> : savedUrl ? <video src={savedUrl} controls poster="/hero-solar-v1.png" preload="none" muted playsInline loop /> : <img src="/hero-solar-v1.png" alt="Vista previa de la portada" />}</div>
         </form>
         <UploadCard type="solar" title="Subir foto de solar" description="Nombre del solar o ubicación" saving={saving === 'solar'} onSubmit={uploadContent} />
         <UploadCard type="testimonial" title="Subir testimonio" description="Nombre del cliente" saving={saving === 'testimonial'} onSubmit={uploadContent} />
@@ -438,7 +438,7 @@ function UploadCard({ type, title, description, saving, onSubmit }: { type: Cont
 }
 
 function ContentList({ title, items, deleting, onDelete }: { title: string; items: ContentItem[]; deleting: string; onDelete: (id: number) => void }) {
-  return <section className="admin-list"><h2>{title}</h2>{items.length ? <div className="admin-items">{items.map(item => <article key={item.id} className="admin-item"><img src={item.image_url} alt={item.title} /><div><b>{item.title}</b>{item.description && <p>{item.description}</p>}</div><button type="button" onClick={() => onDelete(item.id)} disabled={deleting === `delete-${item.id}`} aria-label={`Eliminar ${item.title}`}>{deleting === `delete-${item.id}` ? <Loader2 /> : <Trash2 />}</button></article>)}</div> : <p className="admin-help">Todavía no hay contenido en esta sección.</p>}</section>;
+  return <section className="admin-list"><h2>{title}</h2>{items.length ? <div className="admin-items">{items.map(item => <article key={item.id} className="admin-item"><img src={item.image_url} alt={item.title} loading="lazy" decoding="async" /><div><b>{item.title}</b>{item.description && <p>{item.description}</p>}</div><button type="button" onClick={() => onDelete(item.id)} disabled={deleting === `delete-${item.id}`} aria-label={`Eliminar ${item.title}`}>{deleting === `delete-${item.id}` ? <Loader2 /> : <Trash2 />}</button></article>)}</div> : <p className="admin-help">Todavía no hay contenido en esta sección.</p>}</section>;
 }
 
 function AppointmentsList({ appointments, deleting, onDelete }: { appointments: Appointment[]; deleting: string; onDelete: (id: number) => void }) {
