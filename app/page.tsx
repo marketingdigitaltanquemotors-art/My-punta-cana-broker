@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowRight, CalendarDays, Home as HomeIcon, ImageIcon, Mail,
 import { ViewportVideo } from '@/components/viewport-video';
 function Brand() { return <span className="brand"><span className="logo-mark">M</span><span><b>MY PUNTA CANA</b><small>BROKER</small></span></span>; }
 type ContentItem = { id: number; type: 'solar' | 'testimonial'; title: string; description?: string; image_url: string };
-type SiteSettingsResponse = { heroVideoUrl?: string; testimonialsEnabled?: boolean; projectName?: string; texts?: Partial<typeof defaultTexts> };
+type SiteSettingsResponse = { heroVideoUrl?: string; builtImageUrl?: string; testimonialsEnabled?: boolean; projectName?: string; texts?: Partial<typeof defaultTexts> };
 const defaultTexts = {
   heroEyebrow: 'PUNTA CANA · BÁVARO',
   heroTitle: 'Encuentra tu solar en el centro de Punta Cana-Bávaro, cerca de todo.',
@@ -29,6 +29,7 @@ const defaultTexts = {
 export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [heroVideoUrl, setHeroVideoUrl] = useState('');
+  const [builtImageUrl, setBuiltImageUrl] = useState('/casas-construidas-v1.png');
   const [projectName, setProjectName] = useState('');
   const [solares, setSolares] = useState<ContentItem[]>([]);
   const [testimonios, setTestimonios] = useState<ContentItem[]>([]);
@@ -41,6 +42,7 @@ export default function Home() {
       if (response.ok) {
         const data = await response.json() as SiteSettingsResponse;
         setHeroVideoUrl(data.heroVideoUrl ?? '');
+        setBuiltImageUrl(data.builtImageUrl ?? '/casas-construidas-v1.png');
         setTestimonialsEnabled(data.testimonialsEnabled !== false);
         setProjectName(data.projectName ?? '');
         setTexts({ ...defaultTexts, ...(data.texts ?? {}) });
@@ -68,7 +70,7 @@ export default function Home() {
   return <main>
     <header className="site-header"><a href="#inicio" aria-label="My Punta Cana Broker, inicio"><Brand /></a><button className="menu-toggle" onClick={() => setMenuOpen(!menuOpen)} aria-label="Abrir menú">{menuOpen ? <X /> : <Menu />}</button><nav className={menuOpen ? 'open' : ''}><a href="#inicio">Inicio</a><a href="/agendar-visita">Agendar Visita</a><a href="#contacto">Contacto</a></nav><a className="header-cta" href="/agendar-visita">AGENDAR VISITA <ArrowRight /></a></header>
     <section id="inicio" className="hero hero-simple"><div className="hero-media" aria-hidden="true">{heroVideoUrl ? <ViewportVideo src={heroVideoUrl} poster="/hero-solar-v1.png" onError={() => setHeroVideoUrl('')} /> : <img src="/hero-solar-v1.png" alt="" />}</div><div className="hero-shade" aria-hidden="true"/><div className="hero-copy"><span className="eyebrow"><MapPin /> {texts.heroEyebrow}</span>{projectName && <span className="project-badge">{projectName}</span>}<h1>{texts.heroTitle}</h1><p>{texts.heroSubtitle}</p><div className="hero-offers"><span><b>{texts.offerOne}</b></span><span><b>{texts.offerTwo}</b></span></div><div className="hero-actions"><a className="btn primary" href="/agendar-visita">AGENDAR VISITA <CalendarDays /></a></div><div className="trust"><span><ShieldCheck /> Proceso transparente</span><span><Trees /> Excelente ubicación</span><span><CalendarDays /> Visitas personalizadas</span></div></div></section>
-    <section className="built-homes"><div><span className="kicker"><HomeIcon /> {texts.builtKicker}</span><h2>{texts.builtTitle}</h2><p>{texts.builtText}</p><a className="btn primary" href="/agendar-visita">AGENDAR VISITA <ArrowRight /></a></div><img src="/casas-construidas-v1.png" alt="Casas modernas construidas en un residencial tropical" loading="lazy" decoding="async" /></section>
+    <section className="built-homes"><div><span className="kicker"><HomeIcon /> {texts.builtKicker}</span><h2>{texts.builtTitle}</h2><p>{texts.builtText}</p><a className="btn primary" href="/agendar-visita">AGENDAR VISITA <ArrowRight /></a></div><img src={builtImageUrl} alt="Casas modernas construidas en un residencial tropical" loading="lazy" decoding="async" /></section>
     <section className="content-section" id="solares"><div className="content-heading"><span className="kicker"><ImageIcon /> {texts.solaresKicker}</span><h2>{projectName ? `Fotos de ${projectName}` : texts.solaresTitle}</h2></div>{solares.length ? <div className="media-grid">{solares.map(item => <article className="media-card" key={item.id}><img src={item.image_url} alt={item.title} loading="lazy" decoding="async" /><div><h3>{item.title}</h3>{item.description && <p>{item.description}</p>}</div></article>)}</div> : <div className="empty-content">{texts.solaresEmpty}</div>}</section>
     {testimonialsEnabled && <section className="content-section testimonials" id="testimonios"><div className="content-heading"><span className="kicker"><Star /> {texts.testimonialsKicker}</span><h2>{texts.testimonialsTitle}</h2></div>{activeTestimonial ? <div className="testimonial-carousel" onTouchStart={event => setTouchStart(event.touches[0].clientX)} onTouchEnd={event => finishSwipe(event.changedTouches[0].clientX)}><button className="carousel-arrow" type="button" onClick={previousTestimonial} aria-label="Ver testimonio anterior"><ArrowLeft /></button><article className="testimonial-feature" key={activeTestimonial.id}><img src={activeTestimonial.image_url} alt={activeTestimonial.title} loading="lazy" decoding="async" /><div><span>Cliente {testimonialIndex + 1} de {testimonios.length}</span><h3>{activeTestimonial.title}</h3>{activeTestimonial.description && <p>{activeTestimonial.description}</p>}</div></article><button className="carousel-arrow" type="button" onClick={nextTestimonial} aria-label="Ver siguiente testimonio"><ArrowRight /></button><div className="carousel-dots">{testimonios.map((item, index) => <button key={item.id} type="button" className={index === testimonialIndex ? 'active' : ''} onClick={() => setTestimonialIndex(index)} aria-label={`Ver testimonio de ${item.title}`} />)}</div></div> : <div className="empty-content">{texts.testimonialsEmpty}</div>}</section>}
     <section className="visit-banner"><div><span className="kicker">{texts.visitKicker}</span><h2>{texts.visitTitle}</h2></div><a className="btn primary" href="/agendar-visita">VER FECHAS DISPONIBLES <ArrowRight /></a></section>

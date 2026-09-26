@@ -3,6 +3,7 @@ import { requireAdmin } from '@/lib/admin-auth';
 import { cachedMediaUrl, invalidateMemoryCache, SHORT_CACHE_TTL, withMemoryCache } from '@/lib/memory-cache';
 
 const VIDEO_URL_KEY = 'hero_video_url';
+const BUILT_IMAGE_URL_KEY = 'built_image_url';
 const TESTIMONIALS_ENABLED_KEY = 'testimonials_enabled';
 const PROJECT_NAME_KEY = 'project_name';
 const ACTIVE_PROFILE_KEY = 'active_project_profile_id';
@@ -28,7 +29,9 @@ const TEXT_DEFAULTS = {
 };
 const TEXT_KEYS = Object.keys(TEXT_DEFAULTS);
 const videoTypes = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
+const imageTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 const MAX_VIDEO_SIZE = 80 * 1024 * 1024;
+const MAX_IMAGE_SIZE = 8 * 1024 * 1024;
 const isValidVideoUrl = (value: string) => {
   if (!value) return true;
   if (value.startsWith('/api/content/image?key=')) return true;
@@ -63,7 +66,7 @@ export async function GET(request: Request) {
   try {
     const profileId = await profileIdFromRequest(request);
     const settingsPayload = await withMemoryCache(`config:profile:${profileId}`, SHORT_CACHE_TTL, async () => {
-      const wantedKeys = [VIDEO_URL_KEY, TESTIMONIALS_ENABLED_KEY, PROJECT_NAME_KEY, ...TEXT_KEYS.map(key => `text_${key}`)];
+      const wantedKeys = [VIDEO_URL_KEY, BUILT_IMAGE_URL_KEY, TESTIMONIALS_ENABLED_KEY, PROJECT_NAME_KEY, ...TEXT_KEYS.map(key => `text_${key}`)];
       const placeholders = wantedKeys.map(() => '?').join(',');
       const result = await getDatabase().prepare(`SELECT key, value FROM project_profile_settings WHERE profile_id = ? AND key IN (${placeholders})`).bind(profileId, ...wantedKeys).all<{ key: string; value: string }>();
       const profile = await getDatabase().prepare('SELECT name FROM project_profiles WHERE id = ?').bind(profileId).first<{ name: string }>();
@@ -72,12 +75,12 @@ export async function GET(request: Request) {
       const legacySettings = Object.fromEntries((legacyResult.results ?? []).map(item => [item.key, item.value]));
       const settings = { ...legacySettings, ...profileSettings };
       const texts = Object.fromEntries(Object.entries(TEXT_DEFAULTS).map(([key, value]) => [key, settings[`text_${key}`] ?? value]));
-      return { profileId, heroVideoUrl: settings[VIDEO_URL_KEY] ?? '', testimonialsEnabled: settings[TESTIMONIALS_ENABLED_KEY] !== 'false', projectName: settings[PROJECT_NAME_KEY] || profile?.name || '', texts };
+      return { profileId, heroVideoUrl: settings[VIDEO_URL_KEY] ?? '', builtImageUrl: settings[BUILT_IMAGE_URL_KEY] ?? '/casas-construidas-v1.png', testimonialsEnabled: settings[TESTIMONIALS_ENABLED_KEY] !== 'false', projectName: settings[PROJECT_NAME_KEY] || profile?.name || '', texts };
     });
     return Response.json(settingsPayload);
   } catch (error) {
     console.error('site_settings_get_error', error);
-    return Response.json({ heroVideoUrl: '', testimonialsEnabled: true, projectName: '' });
+    return Response.json({ heroVideoUrl: '', builtImageUrl: '/casas-construidas-v1.png', testimonialsEnabled: true, projectName: '' });
   }
 }
 
@@ -89,6 +92,26 @@ export async function PUT(request: Request) {
   const profileId = await activeProfileId();
   if (request.headers.get('content-type')?.includes('multipart/form-data')) {
     const form = await request.formData();
+    const builtImage = form.get('builtImage');
+    if (builtImage instanceof File && builtImage.size > 0) {
+      if (!imageTypes.has(builtImage.type)) return Response.json({ error: 'La foto debe ser JPG, PNG, WebP o GIF.' }, { status: 400 });
+      if (builtImage.size > MAX_IMAGE_SIZE) return Response.json({ error: 'La foto no puede pesar más de 8 MB.' }, { status: 400 });
+      const extension = builtImage.type.split('/')[1]?.replace('jpeg', 'jpg') ?? 'jpg';
+      uploadedKey = `built-homes/${profileId}/${Date.now()}-${crypto.randomUUID()}.${extension}`;
+      try {
+        await getMediaBucket().put(uploadedKey, builtImage.stream(), { httpMetadata: { contentType: builtImage.type, cacheControl: 'public, max-age=31536000, immutable' } });
+        await getDatabase().prepare('INSERT INTO media_items (key, profile_id, kind, filename, content_type, size, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(uploadedKey, profileId, 'built-home', builtImage.name, builtImage.type, builtImage.size, 0).run();
+        const builtImageUrl = cachedMediaUrl(uploadedKey);
+        await saveProfileSetting(profileId, BUILT_IMAGE_URL_KEY, builtImageUrl);
+        invalidateMemoryCache(`config:profile:${profileId}`, 'media:list:');
+        return Response.json({ builtImageUrl });
+      } catch (error) {
+        console.error('built_image_upload_error', error);
+        await getDatabase().prepare('DELETE FROM media_items WHERE key = ?').bind(uploadedKey).run().catch(() => {});
+        await getMediaBucket().delete(uploadedKey).catch(() => {});
+        return Response.json({ error: 'No pudimos subir la foto. Intenta de nuevo.' }, { status: 503 });
+      }
+    }
     const video = form.get('heroVideo');
     if (!(video instanceof File) || video.size === 0) return Response.json({ error: 'Selecciona un video desde tu PC.' }, { status: 400 });
     if (!videoTypes.has(video.type)) return Response.json({ error: 'El video debe ser MP4, WebM o MOV.' }, { status: 400 });

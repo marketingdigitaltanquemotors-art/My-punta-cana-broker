@@ -11,6 +11,7 @@ type AdminApiData = {
   profiles: ProjectProfile[];
   activeProfileId: number;
   heroVideoUrl: string;
+  builtImageUrl: string;
   testimonialsEnabled: boolean;
   texts: Partial<SiteTexts>;
   items: ContentItem[];
@@ -78,6 +79,7 @@ export default function AdminPage() {
   const [newCredentials, setNewCredentials] = useState({ username: '', password: '' });
   const [heroVideoUrl, setHeroVideoUrl] = useState('');
   const [savedUrl, setSavedUrl] = useState('');
+  const [builtImageUrl, setBuiltImageUrl] = useState('/casas-construidas-v1.png');
   const [profiles, setProfiles] = useState<ProjectProfile[]>([]);
   const [activeProfileId, setActiveProfileId] = useState(1);
   const [newProfileName, setNewProfileName] = useState('');
@@ -110,6 +112,7 @@ export default function AdminPage() {
       setActiveProfileId(profileData.activeProfileId ?? 1);
       setHeroVideoUrl(settings.heroVideoUrl ?? '');
       setSavedUrl(settings.heroVideoUrl ?? '');
+      setBuiltImageUrl(settings.builtImageUrl ?? '/casas-construidas-v1.png');
       setTestimonialsEnabled(settings.testimonialsEnabled !== false);
       setTexts({ ...defaultTexts, ...(settings.texts ?? {}) });
       setItems(content.items ?? []);
@@ -212,6 +215,24 @@ export default function AdminPage() {
     setSavedUrl('');
     setHeroVideoUrl('');
     setMessage('Video quitado. La portada usará la imagen principal.');
+  }
+
+  async function saveBuiltImage(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving('built-image');
+    setMessage('');
+    setError('');
+    const form = new FormData(event.currentTarget);
+    const response = await adminFetch('/api/site-settings', { method: 'PUT', body: form });
+    const data = await readAdminJson(response);
+    setSaving('');
+    if (!response.ok) {
+      setError(data.error ?? 'No pudimos guardar la foto de casas construidas.');
+      return;
+    }
+    setBuiltImageUrl(data.builtImageUrl ?? '/casas-construidas-v1.png');
+    event.currentTarget.reset();
+    setMessage('Foto de casas construidas actualizada en el perfil activo.');
   }
 
   async function createProfile(event: React.FormEvent<HTMLFormElement>) {
@@ -391,7 +412,7 @@ export default function AdminPage() {
 
   return <main className="admin-page">
     <header className="schedule-header"><a href="/" aria-label="My Punta Cana Broker, inicio"><Brand /></a><div className="admin-header-actions"><button type="button" onClick={logout}><LogOut /> Cerrar sesión</button><a className="back-link" href="/"><ArrowLeft /> Volver al inicio</a></div></header>
-    <section className="admin-hero"><span className="kicker"><ImagePlus /> PANEL ADMINISTRATIVO</span><h1>Administrar contenido</h1><p>Actualiza el video principal, sube fotos de solares y publica testimonios con fotos de clientes en sus solares.</p></section>
+    <section className="admin-hero"><span className="kicker"><ImagePlus /> PANEL ADMINISTRATIVO</span><h1>Administrar contenido</h1><p>Actualiza el video principal, la foto de casas construidas, los solares y los testimonios de cada proyecto.</p></section>
     <section className="admin-shell">
       {error && <div className="admin-error">{error}</div>}
       {message && <div className="admin-success"><CheckCircle2 /> {message}</div>}
@@ -425,6 +446,14 @@ export default function AdminPage() {
           <button className="btn dark admin-save" type="submit" disabled={loading || saving === 'video'}>{saving === 'video' ? <Loader2 /> : <Save />} SUBIR VIDEO</button>
           <button className="remove-video" type="button" onClick={removeVideo} disabled={loading || saving === 'video' || !heroVideoUrl}>QUITAR VIDEO</button>
           <div className="video-preview compact">{loading ? <Loader2 className="preview-loader" /> : savedUrl ? <video src={savedUrl} controls poster="/hero-solar-v1.png" preload="none" muted playsInline loop /> : <img src="/hero-solar-v1.png" alt="Vista previa de la portada" />}</div>
+        </form>
+        <form onSubmit={saveBuiltImage} className="admin-card">
+          <span className="kicker"><ImagePlus /> CASAS CONSTRUIDAS</span>
+          <h2>Subir foto de casas construidas</h2>
+          <label>Elegir foto desde la PC<input name="builtImage" type="file" accept="image/png,image/jpeg,image/webp,image/gif" disabled={loading || saving === 'built-image'} required /></label>
+          <p className="admin-help">Acepta JPG, PNG, WebP o GIF de hasta 8 MB. La foto se guardará solamente en el perfil activo.</p>
+          <button className="btn dark admin-save" type="submit" disabled={loading || saving === 'built-image'}>{saving === 'built-image' ? <Loader2 /> : <Upload />} SUBIR FOTO</button>
+          <div className="video-preview compact"><img src={builtImageUrl} alt="Vista previa de casas construidas" loading="lazy" decoding="async" /></div>
         </form>
         <UploadCard type="solar" title="Subir foto de solar" description="Nombre del solar o ubicación" saving={saving === 'solar'} onSubmit={uploadContent} />
         <UploadCard type="testimonial" title="Subir testimonio" description="Nombre del cliente" saving={saving === 'testimonial'} onSubmit={uploadContent} />
