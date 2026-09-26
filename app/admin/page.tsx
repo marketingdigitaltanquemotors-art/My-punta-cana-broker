@@ -12,6 +12,7 @@ type AdminApiData = {
   activeProfileId: number;
   heroVideoUrl: string;
   builtImageUrl: string;
+  builtImageUrls: string[];
   testimonialsEnabled: boolean;
   texts: Partial<SiteTexts>;
   items: ContentItem[];
@@ -79,7 +80,7 @@ export default function AdminPage() {
   const [newCredentials, setNewCredentials] = useState({ username: '', password: '' });
   const [heroVideoUrl, setHeroVideoUrl] = useState('');
   const [savedUrl, setSavedUrl] = useState('');
-  const [builtImageUrl, setBuiltImageUrl] = useState('/casas-construidas-v1.png');
+  const [builtImageUrls, setBuiltImageUrls] = useState(['/casas-construidas-v1.png']);
   const [profiles, setProfiles] = useState<ProjectProfile[]>([]);
   const [activeProfileId, setActiveProfileId] = useState(1);
   const [newProfileName, setNewProfileName] = useState('');
@@ -112,7 +113,7 @@ export default function AdminPage() {
       setActiveProfileId(profileData.activeProfileId ?? 1);
       setHeroVideoUrl(settings.heroVideoUrl ?? '');
       setSavedUrl(settings.heroVideoUrl ?? '');
-      setBuiltImageUrl(settings.builtImageUrl ?? '/casas-construidas-v1.png');
+      setBuiltImageUrls(settings.builtImageUrls?.length ? settings.builtImageUrls : [settings.builtImageUrl ?? '/casas-construidas-v1.png']);
       setTestimonialsEnabled(settings.testimonialsEnabled !== false);
       setTexts({ ...defaultTexts, ...(settings.texts ?? {}) });
       setItems(content.items ?? []);
@@ -230,9 +231,9 @@ export default function AdminPage() {
       setError(data.error ?? 'No pudimos guardar la foto de casas construidas.');
       return;
     }
-    setBuiltImageUrl(data.builtImageUrl ?? '/casas-construidas-v1.png');
+    setBuiltImageUrls(data.builtImageUrls?.length ? data.builtImageUrls : [data.builtImageUrl ?? '/casas-construidas-v1.png']);
     event.currentTarget.reset();
-    setMessage('Foto de casas construidas actualizada en el perfil activo.');
+    setMessage('Fotos de casas construidas agregadas al perfil activo.');
   }
 
   async function createProfile(event: React.FormEvent<HTMLFormElement>) {
@@ -449,11 +450,11 @@ export default function AdminPage() {
         </form>
         <form onSubmit={saveBuiltImage} className="admin-card">
           <span className="kicker"><ImagePlus /> CASAS CONSTRUIDAS</span>
-          <h2>Subir foto de casas construidas</h2>
-          <label>Elegir foto desde la PC<input name="builtImage" type="file" accept="image/png,image/jpeg,image/webp,image/gif" disabled={loading || saving === 'built-image'} required /></label>
-          <p className="admin-help">Acepta JPG, PNG, WebP o GIF de hasta 8 MB. La foto se guardará solamente en el perfil activo.</p>
-          <button className="btn dark admin-save" type="submit" disabled={loading || saving === 'built-image'}>{saving === 'built-image' ? <Loader2 /> : <Upload />} SUBIR FOTO</button>
-          <div className="video-preview compact"><img src={builtImageUrl} alt="Vista previa de casas construidas" loading="lazy" decoding="async" /></div>
+          <h2>Subir fotos de casas construidas</h2>
+          <label>Elegir fotos desde la PC<input name="builtImages" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple disabled={loading || saving === 'built-image'} required /></label>
+          <p className="admin-help">Puedes seleccionar hasta 12 fotos a la vez. Acepta JPG, PNG, WebP o GIF de hasta 8 MB cada una y conserva las fotos anteriores del perfil activo.</p>
+          <button className="btn dark admin-save" type="submit" disabled={loading || saving === 'built-image'}>{saving === 'built-image' ? <Loader2 /> : <Upload />} SUBIR FOTOS</button>
+          <div className="built-images-preview">{builtImageUrls.slice(0, 6).map((url, index) => <img key={url} src={url} alt={`Casa construida ${index + 1}`} loading="lazy" decoding="async" />)}</div>
         </form>
         <UploadCard type="solar" title="Subir foto de solar" description="Nombre del solar o ubicación" saving={saving === 'solar'} onSubmit={uploadContent} />
         <UploadCard type="testimonial" title="Subir testimonio" description="Nombre del cliente" saving={saving === 'testimonial'} onSubmit={uploadContent} />

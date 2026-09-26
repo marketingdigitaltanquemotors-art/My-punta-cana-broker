@@ -62,6 +62,12 @@ async function saveProfileSetting(profileId: number, key: string, value: string)
   return getDatabase().prepare('INSERT INTO project_profile_settings (profile_id, key, value, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at').bind(profileId, key, value, Math.floor(Date.now() / 1000)).run();
 }
 
+async function builtImageUrls(profileId: number, legacyUrl = '') {
+  const result = await getDatabase().prepare("SELECT key FROM media_items WHERE profile_id = ? AND kind = 'built-home' ORDER BY sort_order ASC, key ASC").bind(profileId).all<{ key: string }>();
+  const urls = (result.results ?? []).map(item => cachedMediaUrl(item.key));
+  return urls.length ? urls : [legacyUrl || '/casas-construidas-v1.png'];
+}
+
 export async function GET(request: Request) {
   try {
     const profileId = await profileIdFromRequest(request);
@@ -75,12 +81,13 @@ export async function GET(request: Request) {
       const legacySettings = Object.fromEntries((legacyResult.results ?? []).map(item => [item.key, item.value]));
       const settings = { ...legacySettings, ...profileSettings };
       const texts = Object.fromEntries(Object.entries(TEXT_DEFAULTS).map(([key, value]) => [key, settings[`text_${key}`] ?? value]));
-      return { profileId, heroVideoUrl: settings[VIDEO_URL_KEY] ?? '', builtImageUrl: settings[BUILT_IMAGE_URL_KEY] ?? '/casas-construidas-v1.png', testimonialsEnabled: settings[TESTIMONIALS_ENABLED_KEY] !== 'false', projectName: settings[PROJECT_NAME_KEY] || profile?.name || '', texts };
+      const images = await builtImageUrls(profileId, settings[BUILT_IMAGE_URL_KEY]);
+      return { profileId, heroVideoUrl: settings[VIDEO_URL_KEY] ?? '', builtImageUrl: images[0], builtImageUrls: images, testimonialsEnabled: settings[TESTIMONIALS_ENABLED_KEY] !== 'false', projectName: settings[PROJECT_NAME_KEY] || profile?.name || '', texts };
     });
     return Response.json(settingsPayload);
   } catch (error) {
     console.error('site_settings_get_error', error);
-    return Response.json({ heroVideoUrl: '', builtImageUrl: '/casas-construidas-v1.png', testimonialsEnabled: true, projectName: '' });
+    return Response.json({ heroVideoUrl: '', builtImageUrl: '/casas-construidas-v1.png', builtImageUrls: ['/casas-construidas-v1.png'], testimonialsEnabled: true, projectName: '' });
   }
 }
 
@@ -92,24 +99,36 @@ export async function PUT(request: Request) {
   const profileId = await activeProfileId();
   if (request.headers.get('content-type')?.includes('multipart/form-data')) {
     const form = await request.formData();
-    const builtImage = form.get('builtImage');
-    if (builtImage instanceof File && builtImage.size > 0) {
-      if (!imageTypes.has(builtImage.type)) return Response.json({ error: 'La foto debe ser JPG, PNG, WebP o GIF.' }, { status: 400 });
-      if (builtImage.size > MAX_IMAGE_SIZE) return Response.json({ error: 'La foto no puede pesar más de 8 MB.' }, { status: 400 });
-      const extension = builtImage.type.split('/')[1]?.replace('jpeg', 'jpg') ?? 'jpg';
-      uploadedKey = `built-homes/${profileId}/${Date.now()}-${crypto.randomUUID()}.${extension}`;
+    const legacyBuiltImage = form.get('builtImage');
+    const builtImages = [...form.getAll('builtImages'), legacyBuiltImage].filter((item): item is File => item instanceof File && item.size > 0);
+    if (builtImages.length) {
+      if (builtImages.length > 12) return Response.json({ error: 'Puedes subir hasta 12 fotos a la vez.' }, { status: 400 });
+      for (const image of builtImages) {
+        if (!imageTypes.has(image.type)) return Response.json({ error: 'Todas las fotos deben ser JPG, PNG, WebP o GIF.' }, { status: 400 });
+        if (image.size > MAX_IMAGE_SIZE) return Response.json({ error: `La foto ${image.name} supera el límite de 8 MB.` }, { status: 400 });
+      }
+      const uploadedKeys: string[] = [];
       try {
-        await getMediaBucket().put(uploadedKey, builtImage.stream(), { httpMetadata: { contentType: builtImage.type, cacheControl: 'public, max-age=31536000, immutable' } });
-        await getDatabase().prepare('INSERT INTO media_items (key, profile_id, kind, filename, content_type, size, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(uploadedKey, profileId, 'built-home', builtImage.name, builtImage.type, builtImage.size, 0).run();
-        const builtImageUrl = cachedMediaUrl(uploadedKey);
-        await saveProfileSetting(profileId, BUILT_IMAGE_URL_KEY, builtImageUrl);
-        invalidateMemoryCache(`config:profile:${profileId}`, 'media:list:');
-        return Response.json({ builtImageUrl });
+        const orderRow = await getDatabase().prepare("SELECT COALESCE(MAX(sort_order), -1) AS max_order FROM media_items WHERE profile_id = ? AND kind = 'built-home'").bind(profileId).first<{ max_order: number }>();
+        let sortOrder = Number(orderRow?.max_order ?? -1) + 1;
+        for (const image of builtImages) {
+          const extension = image.type.split('/')[1]?.replace('jpeg', 'jpg') ?? 'jpg';
+          const key = `built-homes/${profileId}/${Date.now()}-${crypto.randomUUID()}.${extension}`;
+          await getMediaBucket().put(key, image.stream(), { httpMetadata: { contentType: image.type, cacheControl: 'public, max-age=31536000, immutable' } });
+          uploadedKeys.push(key);
+          await getDatabase().prepare('INSERT INTO media_items (key, profile_id, kind, filename, content_type, size, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(key, profileId, 'built-home', image.name, image.type, image.size, sortOrder).run();
+          sortOrder += 1;
+        }
+        invalidateMemoryCache(`config:profile:${profileId}`, 'media:list:', 'media-url:');
+        const images = await builtImageUrls(profileId);
+        return Response.json({ builtImageUrl: images[0], builtImageUrls: images });
       } catch (error) {
-        console.error('built_image_upload_error', error);
-        await getDatabase().prepare('DELETE FROM media_items WHERE key = ?').bind(uploadedKey).run().catch(() => {});
-        await getMediaBucket().delete(uploadedKey).catch(() => {});
-        return Response.json({ error: 'No pudimos subir la foto. Intenta de nuevo.' }, { status: 503 });
+        console.error('built_images_upload_error', error);
+        for (const key of uploadedKeys) {
+          await getDatabase().prepare('DELETE FROM media_items WHERE key = ?').bind(key).run().catch(() => {});
+          await getMediaBucket().delete(key).catch(() => {});
+        }
+        return Response.json({ error: 'No pudimos subir las fotos. Intenta de nuevo.' }, { status: 503 });
       }
     }
     const video = form.get('heroVideo');
