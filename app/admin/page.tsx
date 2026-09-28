@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { ArrowLeft, Building2, CalendarCheck, CheckCircle2, Copy, ExternalLink, Eye, EyeOff, ImagePlus, Loader2, LogOut, LockKeyhole, Save, Trash2, Upload, Video } from 'lucide-react';
+import { Brand } from '@/components/brand';
 
 type ContentType = 'solar' | 'testimonial';
 type ContentItem = { id: number; type: ContentType; title: string; description?: string; image_url: string };
@@ -26,7 +27,6 @@ type AdminApiData = {
 
 const readAdminJson = (response: Response) => response.json() as Promise<AdminApiData>;
 
-function Brand() { return <span className="brand"><span className="logo-mark">M</span><span><b>MY PUNTA CANA</b><small>BROKER</small></span></span>; }
 const labels = { solar: 'Foto de solar', testimonial: 'Testimonio' };
 const defaultTexts = {
   heroEyebrow: 'PUNTA CANA · BÁVARO',

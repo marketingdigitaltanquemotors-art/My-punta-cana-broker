@@ -7,6 +7,7 @@ import { ArrowLeft, CalendarDays, Check, Clock3, LoaderCircle, ShieldCheck } fro
 import { Calendar } from '@/components/ui/calendar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Brand } from '@/components/brand';
 
 const makeSlots = (start: number, count: number) => Array.from({ length: count }, (_, index) => { const minutes = start + index * 30; return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`; });
 const weekdaySlots = makeSlots(510, 18);
@@ -53,7 +54,7 @@ export default function ScheduleVisit() {
   }
 
   return <main className="schedule-page">
-    <header className="schedule-header"><a href={backHref} className="brand"><span className="logo-mark">M</span><span><b>MY PUNTA CANA</b><small>BROKER</small></span></a><a href={backHref} className="back-link"><ArrowLeft/> VOLVER AL INICIO</a></header>
+    <header className="schedule-header"><a href={backHref} aria-label="My Punta Cana Broker, inicio"><Brand /></a><a href={backHref} className="back-link"><ArrowLeft/> VOLVER AL INICIO</a></header>
     <section className="schedule-hero"><span className="eyebrow"><CalendarDays/> AGENDA TU RECORRIDO</span><h1>Elige el día y la hora de tu visita.</h1><p>Los horarios ocupados se bloquean automáticamente para que tu reserva sea exclusiva.</p></section>
     <section className="schedule-content">
       {confirmation ? <div className="schedule-confirmation"><span className="check"><Check/></span><span className="kicker">RESERVA CONFIRMADA</span><h2>¡Tu visita con My Punta Cana Broker ha sido agendada!</h2><p>Te esperamos en la fecha acordada.</p><div className="confirmation-details"><span><CalendarDays/><small>Fecha</small><b>{format(new Date(`${confirmation.date}T12:00:00`), "d 'de' MMMM", { locale: es })}</b></span><span><Clock3/><small>Hora</small><b>{showTime(confirmation.time)}</b></span></div><p className="reservation-code">Código de reserva <b>{confirmation.code}</b></p><button className="new-booking" onClick={() => { setConfirmation(null); setDetails({name:'',phone:'',email:''}); setTime(''); }}>AGENDAR OTRA VISITA</button></div> : <form className="scheduler" action={`/agendar-visita${profileScheduleQuery}`} onSubmit={submit}>

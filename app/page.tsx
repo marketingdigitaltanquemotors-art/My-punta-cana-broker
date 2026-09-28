@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { ArrowLeft, ArrowRight, CalendarDays, Home as HomeIcon, ImageIcon, Mail, MapPin, Menu, MessageCircle, Phone, ShieldCheck, Star, Trees, X } from 'lucide-react';
 import { BuiltHomesCarousel } from '@/components/built-homes-carousel';
 import { ViewportVideo } from '@/components/viewport-video';
-function Brand() { return <span className="brand"><span className="logo-mark">M</span><span><b>MY PUNTA CANA</b><small>BROKER</small></span></span>; }
+import { Brand } from '@/components/brand';
 type ContentItem = { id: number; type: 'solar' | 'testimonial'; title: string; description?: string; image_url: string };
 type SiteSettingsResponse = { heroVideoUrl?: string; builtImageUrl?: string; builtImageUrls?: string[]; testimonialsEnabled?: boolean; projectName?: string; texts?: Partial<typeof defaultTexts> };
 const defaultTexts = {
