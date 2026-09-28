@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'),
   title: 'My Punta Cana Broker | Solares en Punta Cana-Bávaro',
   description: 'Encuentra solares en Punta Cana-Bávaro, simula tu plan de pago y agenda una visita con My Punta Cana Broker.',
-  icons: { icon: '/my-punta-cana-broker-logo.png', apple: '/my-punta-cana-broker-logo.png' },
+  icons: { icon: '/my-punta-cana-broker-logo.jpeg', apple: '/my-punta-cana-broker-logo.jpeg' },
   openGraph: { title: 'My Punta Cana Broker', description: 'Tu futuro empieza aquí. Solares y terrenos en Punta Cana-Bávaro.', images: ['/og.png'], type: 'website' },
   twitter: { card: 'summary_large_image', title: 'My Punta Cana Broker', description: 'Tu futuro empieza aquí.', images: ['/og.png'] },
 };

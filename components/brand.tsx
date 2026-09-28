@@ -5,7 +5,7 @@ export function Brand() {
     <span className="brand">
       <Image
         className="brand-logo"
-        src="/my-punta-cana-broker-logo.png"
+        src="/my-punta-cana-broker-logo.jpeg"
         alt="My Punta Cana Broker"
         width={1536}
         height={1024}
