@@ -11,21 +11,22 @@ const cormorant = Cormorant_Garamond({
 });
 
 const siteUrl = 'https://broker.havelgo.com';
+const homeTitle = 'Solares en Venta en Punta Cana y Bávaro | My Punta Cana Broker';
+const homeDescription =
+  'Descubre solares en venta en Punta Cana y Bávaro. Conoce opciones de financiamiento, ubicación y características. Agenda tu visita personalizada.';
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: 'My Punta Cana Broker | Solares en Punta Cana-Bávaro',
-  description:
-    'Solares en Punta Cana-Bávaro. Conoce los proyectos y agenda una visita con My Punta Cana Broker.',
+  title: homeTitle,
+  description: homeDescription,
   alternates: { canonical: siteUrl },
   icons: {
     icon: '/my-punta-cana-broker-logo.jpeg',
     apple: '/my-punta-cana-broker-logo.jpeg',
   },
   openGraph: {
-    title: 'My Punta Cana Broker | Solares en Punta Cana-Bávaro',
-    description:
-      'Solares en Punta Cana-Bávaro. Conoce los proyectos y agenda una visita con My Punta Cana Broker.',
+    title: homeTitle,
+    description: homeDescription,
     url: siteUrl,
     siteName: 'My Punta Cana Broker',
     locale: 'es_DO',
@@ -36,9 +37,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'My Punta Cana Broker | Solares en Punta Cana-Bávaro',
-    description:
-      'Solares en Punta Cana-Bávaro. Conoce los proyectos y agenda una visita con My Punta Cana Broker.',
+    title: homeTitle,
+    description: homeDescription,
     images: [{ url: '/og.png', alt: 'My Punta Cana Broker' }],
   },
 };
