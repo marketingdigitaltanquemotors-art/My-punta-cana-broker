@@ -11,7 +11,7 @@ const defaultTexts = {
   heroTitle: 'Encuentra tu solar en el centro de Punta Cana-Bávaro, cerca de todo.',
   heroSubtitle: 'Agenda una visita personalizada en Punta Cana-Bávaro de manera rápida y sencilla.',
   offerOne: 'Desde un 15%',
-  offerTwo: 'Desde 150$ por mentro',
+  offerTwo: 'Desde 150$ por metro',
   builtKicker: 'CASAS CONSTRUIDAS',
   builtTitle: 'Imagina tu casa hecha realidad en Punta Cana-Bávaro.',
   builtText: 'Estos solares son una oportunidad para construir cerca de todo, con una visión clara de comunidad, acceso y futuro crecimiento.',
